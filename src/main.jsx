@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 import { DEMO_ARRANGEMENT } from "./data/demoArrangement";
 import { youtubeEmbedUrl, youtubeVideoId } from "./lib/trackInput";
+import ChordDiagram from "./components/ChordDiagram";
+import { playChordSound } from "./lib/audio";
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const NOTE_INDEX = {
@@ -384,7 +386,12 @@ function App() {
                 {arrangement.timing && arrangement.timing.map((event, eventIndex) => {
                   const isActive = eventIndex === activeEventIndex;
                   return (
-                    <div className={`chord-block ${isActive ? "active" : ""}`} key={eventIndex}>
+                    <div 
+                      className={`chord-block ${isActive ? "active" : ""}`} 
+                      key={eventIndex}
+                      onClick={() => !editMode && playChordSound(transposeChord(event.chord, transposition), instrument)}
+                      style={{ cursor: editMode ? 'text' : 'pointer' }}
+                    >
                       {editMode ? (
                         <input
                           className="chord-editor"
@@ -393,9 +400,16 @@ function App() {
                           aria-label={`Edit chord`}
                         />
                       ) : (
-                        <strong className="chord-display">
-                          {transposeChord(event.chord, transposition)}
-                        </strong>
+                        <>
+                          <strong className="chord-display">
+                            {transposeChord(event.chord, transposition)}
+                          </strong>
+                          {instrument === "Ukulele" && (
+                            <div className="chord-tooltip">
+                              <ChordDiagram chordName={transposeChord(event.chord, transposition)} width={120} />
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   );

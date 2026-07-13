@@ -10,10 +10,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tombatossals/chords-db": "^0.5.1",
+    "@tonaljs/tonal": "^4.10.0",
     "@vitejs/plugin-react": "latest",
-    "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
-  },
-  "devDependencies": {}
+    "react-dom": "latest",
+    "tone": "^15.1.22",
+    "vite": "latest"
+  }
 }
