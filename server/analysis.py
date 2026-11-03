@@ -14,9 +14,11 @@ server/benchmark):
    both scored worse on the benchmark.)
 4. Separate treble and bass chroma. The bass note is the strongest single cue
    for the chord root (Am vs C, Em vs G).
-5. Chord HMM over 24 major/minor triads + "no chord", decoded per beat with
-   bar-position-aware change probabilities and a soft, key-dependent prior
-   (minor keys get their V major; borrowed chords like bVII stay cheap).
+5. Chord HMM over 24 major/minor triads + "no chord", decoded per half-beat
+   (so chords pushed onto the "and" land in place) with bar-position-aware
+   change probabilities and a soft, key-dependent prior (minor keys get their
+   V major; borrowed chords like bVII stay cheap). Evidence is weighted by
+   frame length, so finer frames don't make the chart twitchier.
 6. Key found by a second HMM over the 24 keys, fed by the decoded chords
    (how long each chord lasts, first/last chord, V->I cadences) and the
    chroma profile. Changing key is expensive, so borrowed chords don't
@@ -25,9 +27,10 @@ server/benchmark):
 7. Chord detail: a second chord HMM over 12 roots x 24 chord types (sevenths,
    sus, add9, 6ths, 9/11/13, dim, aug, power chords), guided by the first
    pass. Evidence comes from a gentler-compressed spectrum with each note's
-   2nd/3rd harmonics removed (otherwise E's overtone B fakes Cmaj7), averaged
-   over neighbouring beats so a melody's passing note doesn't fake an add9.
-   Richer chords must earn their place on every beat. Slash chords come from
+   2nd/3rd harmonics removed (otherwise E's overtone B fakes Cmaj7). Richer
+   chords must earn their place on every frame. (Averaging evidence over
+   neighbouring beats was tried: it blended fast changes like Gm | Bb into
+   one "Gm7".) Slash chords come from
    a contrast bass chroma, and same-note spellings are named the usual way
    (Am7, not C6/A).
 8. Confidence = forward-backward probability that the chord you'd strum is
@@ -68,14 +71,17 @@ class Params:
     # Emission model
     beta: float = 8.0  # sharpness of chord-template similarity
     bass_weight: float = 5.0  # log-bonus scale for the chord root in the bass
+    bass_onset_bonus: float = 2.0  # cheaper chord change when the bass moves onto the new chord's root
     no_chord_threshold: float = 0.15  # template correlation below this favours N
     silence_level: float = 0.1  # harmonic level (vs the loud parts) below which N takes over
     compression: float = 1000.0  # log(1 + compression * spectrum) dynamic-range squash
     # Transition model (probability of a chord change entering a beat)
     change_downbeat: float = 0.40
-    change_midbar: float = 0.12
-    change_offbeat: float = 0.03
+    change_midbar: float = 0.35
+    change_offbeat: float = 0.25
     change_unknown: float = 0.12
+    change_between_beats: float = 0.08  # chords pushed onto the "and" (half a beat early)
+    subdivisions: int = 2  # frames per beat: 2 lets a chord start on the "and"
     key_prior_strength: float = 1.0
     # Key model (evidence is in log-units per second of music)
     profile_weight: float = 4.0
@@ -93,7 +99,6 @@ class Params:
     missing_weight: float = 1.0  # cost of a chord tone that isn't sounding
     extra_weight: float = 0.5  # cost of a sounding note outside the chord (melodies wander)
     third_weight: float = 1.5  # ... except a 3rd under a sus/power chord, whose point is having none
-    detail_smoothing: int = 1  # average over +-n beats inside a first-pass chord
     detail_bass_weight: float = 3.0  # how strongly the bass note decides the root
     guide_weight: float = 1.0  # trust in the first pass's root and third
     guide_floor: float = 0.05  # caps how hard the first pass can veto a chord
@@ -118,6 +123,7 @@ class Features:
     detail_bass: np.ndarray  # (12, n) bass chroma with the same contrast, max-normalised per beat
     loudness: np.ndarray  # (n,) relative harmonic level in [0, 1]
     tempo: float
+    subdivisions: int = 1  # frames per beat; frame i sits on beat i // subdivisions
 
 
 _TREBLE_WEIGHTS = np.exp(-0.5 * ((NOTE_MIDI - 66) / 12.0) ** 2) * (NOTE_MIDI >= 48)
@@ -175,8 +181,12 @@ def _regular_beats(beat_times: np.ndarray, duration: float) -> np.ndarray:
     return np.array([*starts, duration])
 
 
-def beat_spectrum(y: np.ndarray, sr: int = SR) -> tuple[np.ndarray, np.ndarray, float]:
-    """Audio -> (beat boundaries, per-beat semitone spectrum (N_NOTES, n), tempo)."""
+def beat_spectrum(y: np.ndarray, sr: int = SR, subdivisions: int = 1) -> tuple[np.ndarray, np.ndarray, float]:
+    """Audio -> (frame boundaries, per-frame semitone spectrum (N_NOTES, n), tempo).
+
+    Frames are beats split into `subdivisions` equal parts, so a chord pushed
+    onto the "and" of a beat gets its own frame instead of smearing a beat.
+    """
     if sr != SR:
         y = librosa.resample(y, orig_sr=sr, target_sr=SR)
     y = np.asarray(y, dtype=np.float32)
@@ -190,6 +200,9 @@ def beat_spectrum(y: np.ndarray, sr: int = SR) -> tuple[np.ndarray, np.ndarray, 
     tempo, beat_frames = librosa.beat.beat_track(onset_envelope=onset, sr=SR, hop_length=HOP, units="frames")
     beat_times = librosa.frames_to_time(beat_frames, sr=SR, hop_length=HOP)
     boundaries = _regular_beats(beat_times, duration)
+    if subdivisions > 1:
+        steps = np.diff(boundaries)[:, None] * (np.arange(subdivisions) / subdivisions)[None, :]
+        boundaries = np.concatenate([(boundaries[:-1, None] + steps).reshape(-1), boundaries[-1:]])
     tempo_bpm = 60.0 / _beat_period(beat_times) if len(beat_times) >= 2 else float(np.atleast_1d(tempo)[0]) or 120.0
 
     # Tuning in semitones, applied as a fraction of a CQT bin.
@@ -281,7 +294,7 @@ def detail_chroma(
 
 def extract_features(y: np.ndarray, sr: int = SR, params: Params | None = None) -> Features:
     params = params or Params()
-    boundaries, beat_spectra, tempo_bpm = beat_spectrum(y, sr)
+    boundaries, beat_spectra, tempo_bpm = beat_spectrum(y, sr, params.subdivisions)
     treble, bass, loudness = chroma_from_spectra(beat_spectra, params.compression)
     detail, detail_bass = detail_chroma(beat_spectra, params.detail_compression, params.overtone_decay, params.detail_register)
     return Features(
@@ -292,7 +305,15 @@ def extract_features(y: np.ndarray, sr: int = SR, params: Params | None = None) 
         detail_bass=detail_bass,
         loudness=loudness,
         tempo=tempo_bpm,
+        subdivisions=params.subdivisions,
     )
+
+
+def frame_weights(features: Features) -> np.ndarray:
+    """Each frame's length in beats. Evidence is weighted by it so splitting
+    beats into halves doesn't double how loudly the audio argues against the
+    "chords change rarely" prior."""
+    return np.clip(np.diff(features.boundaries) * features.tempo / 60.0, 0.2, 2.0)
 
 
 # ---------------------------------------------------------------------------
@@ -327,7 +348,7 @@ def emission_logprob(features: Features, params: Params) -> np.ndarray:
     logp[N_STATE] = params.beta * params.no_chord_threshold + params.bass_weight * (1 / 12) + 20.0 * silent
     logp[:24] -= 20.0 * silent
     logp -= logp.max(axis=0, keepdims=True)
-    return logp
+    return logp * frame_weights(features)[None, :]
 
 
 # ---------------------------------------------------------------------------
@@ -372,29 +393,52 @@ def _transition(change: float, prior: np.ndarray, strength: float) -> np.ndarray
     return np.log(matrix)
 
 
-def _bar_positions(count: int, beats_per_bar: int | None, phase: int) -> np.ndarray:
-    """0 = downbeat, 1 = mid-bar (beat 3 of 4), 2 = other beat, 3 = unknown meter."""
+N_CLASSES = 5  # frame classes, each with its own chance of a chord change
+
+
+def _bar_positions(count: int, beats_per_bar: int | None, phase: int, subdivisions: int = 1) -> np.ndarray:
+    """0 = downbeat, 1 = mid-bar (beat 3 of 4), 2 = other beat, 3 = beat of
+    unknown meter, 4 = between beats (the "and")."""
+    frame = np.arange(count)
+    between = frame % subdivisions != 0
     if beats_per_bar is None:
-        return np.full(count, 3)
-    position = (np.arange(count) - phase) % beats_per_bar
+        return np.where(between, 4, 3)
+    position = (frame // subdivisions - phase) % beats_per_bar
     classes = np.full(count, 2)
     classes[position == 0] = 0
     if beats_per_bar == 4:
         classes[position == 2] = 1
+    classes[between] = 4
     return classes
 
 
 def _transition_set(prior: np.ndarray, params: Params) -> np.ndarray:
-    changes = (params.change_downbeat, params.change_midbar, params.change_offbeat, params.change_unknown)
-    return np.stack([_transition(change, prior, params.key_prior_strength) for change in changes])
+    return np.stack([_transition(change, prior, params.key_prior_strength) for change in _change_probabilities(params)])
 
 
-def viterbi(logp: np.ndarray, log_transitions: np.ndarray, classes: np.ndarray, log_initial: np.ndarray) -> np.ndarray:
+def _change_probabilities(params: Params) -> tuple[float, ...]:
+    """Chance of a chord change entering a frame, per frame class."""
+    return (params.change_downbeat, params.change_midbar, params.change_offbeat, params.change_unknown, params.change_between_beats)
+
+
+def viterbi(
+    logp: np.ndarray,
+    log_transitions: np.ndarray,
+    classes: np.ndarray,
+    log_initial: np.ndarray,
+    entry_bonus: np.ndarray | None = None,
+) -> np.ndarray:
+    """Best state path. `entry_bonus` (states, n) is added to moving *into* a
+    state at frame t (not to staying in it)."""
     states, count = logp.shape
     score = log_initial + logp[:, 0]
     back = np.zeros((states, count), dtype=np.int16)
+    diagonal = np.arange(states)
     for t in range(1, count):
         candidates = score[:, None] + log_transitions[classes[t]]
+        if entry_bonus is not None:
+            candidates = candidates + entry_bonus[None, :, t]
+            candidates[diagonal, diagonal] -= entry_bonus[:, t]
         back[:, t] = np.argmax(candidates, axis=0)
         score = candidates[back[:, t], np.arange(states)] + logp[:, t]
     path = np.zeros(count, dtype=int)
@@ -404,16 +448,30 @@ def viterbi(logp: np.ndarray, log_transitions: np.ndarray, classes: np.ndarray, 
     return path
 
 
-def posteriors(logp: np.ndarray, log_transitions: np.ndarray, classes: np.ndarray, log_initial: np.ndarray) -> np.ndarray:
+def posteriors(
+    logp: np.ndarray,
+    log_transitions: np.ndarray,
+    classes: np.ndarray,
+    log_initial: np.ndarray,
+    entry_bonus: np.ndarray | None = None,
+) -> np.ndarray:
     """Forward-backward state posteriors, (states, n)."""
     states, count = logp.shape
     alpha = np.zeros((states, count))
     beta = np.zeros((states, count))
     alpha[:, 0] = log_initial + logp[:, 0]
+    eye = np.eye(states, dtype=bool)
+
+    def step(t: int) -> np.ndarray:
+        matrix = log_transitions[classes[t]]
+        if entry_bonus is not None:
+            matrix = matrix + np.where(eye, 0.0, entry_bonus[None, :, t])
+        return matrix
+
     for t in range(1, count):
-        alpha[:, t] = np.logaddexp.reduce(alpha[:, t - 1, None] + log_transitions[classes[t]], axis=0) + logp[:, t]
+        alpha[:, t] = np.logaddexp.reduce(alpha[:, t - 1, None] + step(t), axis=0) + logp[:, t]
     for t in range(count - 2, -1, -1):
-        beta[:, t] = np.logaddexp.reduce(log_transitions[classes[t + 1]] + (logp[:, t + 1] + beta[:, t + 1])[None, :], axis=1)
+        beta[:, t] = np.logaddexp.reduce(step(t + 1) + (logp[:, t + 1] + beta[:, t + 1])[None, :], axis=1)
     gamma = alpha + beta
     gamma -= np.logaddexp.reduce(gamma, axis=0, keepdims=True)
     return np.exp(gamma)
@@ -424,9 +482,15 @@ def posteriors(logp: np.ndarray, log_transitions: np.ndarray, classes: np.ndarra
 # ---------------------------------------------------------------------------
 
 
-def estimate_meter(path: np.ndarray) -> tuple[int | None, int]:
-    """Infer beats per bar (3 or 4) and downbeat phase from where chords change."""
-    change_beats = [t for t in range(1, len(path)) if path[t] != path[t - 1] and path[t] != N_STATE and path[t - 1] != N_STATE]
+def estimate_meter(path: np.ndarray, subdivisions: int = 1) -> tuple[int | None, int]:
+    """Infer beats per bar (3 or 4) and downbeat phase from where chords change.
+
+    A change pushed onto the "and" counts towards the beat it anticipates."""
+    change_beats = [
+        -(-t // subdivisions)
+        for t in range(1, len(path))
+        if path[t] != path[t - 1] and path[t] != N_STATE and path[t - 1] != N_STATE
+    ]
     if len(change_beats) < 6:
         return None, 0
     best: tuple[float, int, int] = (-1.0, 4, 0)
@@ -575,28 +639,9 @@ def _detail_tables() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 _DETAIL_MEMBERS, _DETAIL_IMAGE, _DETAIL_TIER, _DETAIL_NO_THIRD = _detail_tables()
 
 
-def _smooth_within_chords(detail: np.ndarray, path: np.ndarray, radius: int) -> np.ndarray:
-    """Average over neighbouring beats of the same first-pass chord.
-
-    Chord tones recur (sustained, strummed again, or cycled by an arpeggio);
-    a melody's passing note usually lasts one beat and gets diluted.
-    """
-    if radius <= 0:
-        return detail
-    smoothed = detail.copy()
-    for t in range(detail.shape[1]):
-        lo, hi = t, t
-        while lo > max(0, t - radius) and path[lo - 1] == path[t]:
-            lo -= 1
-        while hi < min(len(path) - 1, t + radius) and path[hi + 1] == path[t]:
-            hi += 1
-        smoothed[:, t] = detail[:, lo : hi + 1].mean(axis=1)
-    return smoothed
-
-
 def detail_emissions(features: Features, path: np.ndarray, posterior: np.ndarray, params: Params) -> np.ndarray:
     """(12 * n_qualities, n beats) log-scores for every root/quality pair."""
-    detail = _smooth_within_chords(features.detail, path, params.detail_smoothing)
+    detail = features.detail
     presence = 1.0 / (1.0 + np.exp(-params.presence_slope * (detail - params.presence_threshold)))
     presence = np.clip(presence, params.presence_floor, 1 - params.presence_floor)
     notes = params.missing_weight * (_DETAIL_MEMBERS @ np.log(presence))
@@ -609,7 +654,7 @@ def detail_emissions(features: Features, path: np.ndarray, posterior: np.ndarray
     bass_fit = np.maximum(features.detail_bass[roots], 0.6 * inversion)
     guide = np.maximum(posterior[_DETAIL_IMAGE[:, 0]], posterior[_DETAIL_IMAGE[:, 1]])
 
-    return (
+    return frame_weights(features)[None, :] * (
         notes
         + params.detail_bass_weight * np.log(bass_fit + 0.1)
         + params.guide_weight * np.log(guide + params.guide_floor)
@@ -621,8 +666,11 @@ def _detail_transitions(params: Params) -> np.ndarray:
     states = 12 * _Q
     same_root = np.kron(np.eye(12), np.ones((_Q, _Q))).astype(bool)
     matrices = []
-    for change in (params.change_downbeat, params.change_midbar, params.change_offbeat, params.change_unknown):
-        matrix = np.where(same_root, change * params.same_root_change / (_Q - 1), change * (1 - params.same_root_change) / (states - _Q))
+    for change in _change_probabilities(params):
+        # A new root costs what it costs in the first pass (one of 11 roots,
+        # major or minor); richer chord types then pay their entry penalty.
+        other_root = change * (1 - params.same_root_change) / (11 * 2)
+        matrix = np.where(same_root, change * params.same_root_change / (_Q - 1), other_root)
         np.fill_diagonal(matrix, 1 - change)
         log_matrix = np.log(matrix) - np.asarray(params.entry_penalty)[_DETAIL_TIER][None, :]
         np.fill_diagonal(log_matrix, np.log(1 - change))
@@ -637,6 +685,7 @@ def refine_chords(features: Features, path: np.ndarray, posterior: np.ndarray, b
     the detail emissions (for confidence).
     """
     emissions = detail_emissions(features, path, posterior, params)
+    entry_bonus = params.bass_onset_bonus * np.repeat(bass_onsets(features), _Q, axis=0)
     transitions = _detail_transitions(params)
     detail = np.full(len(path), -1)
     voiced = path != N_STATE
@@ -649,7 +698,7 @@ def refine_chords(features: Features, path: np.ndarray, posterior: np.ndarray, b
         while end < len(path) and voiced[end]:
             end += 1
         run = slice(start, end)
-        detail[run] = viterbi(emissions[:, run], transitions, beat_classes[run], np.zeros(12 * _Q))
+        detail[run] = viterbi(emissions[:, run], transitions, beat_classes[run], np.zeros(12 * _Q), entry_bonus[:, run])
         start = end
     return detail, emissions
 
@@ -706,16 +755,22 @@ def _slash_bass(bass: np.ndarray, root: int, quality: str, params: Params) -> in
 # ---------------------------------------------------------------------------
 
 
-def _decode(logp, regions, beat_classes, params):
+def bass_onsets(features: Features) -> np.ndarray:
+    """(12, n): how much each bass note rose into each frame."""
+    bass = features.detail_bass
+    return np.maximum(np.diff(bass, axis=1, prepend=bass[:, :1]), 0)
+
+
+def _decode(logp, regions, beat_classes, params, entry_bonus=None):
     """Viterbi under a (possibly piecewise) key prior. Returns path and model."""
     count = logp.shape[1]
     transition_sets = [_transition_set(key_chord_prior(*key), params) for _, key in regions]
     transitions = np.concatenate(transition_sets)
     classes = beat_classes.copy()
     for index, (first_beat, _) in enumerate(regions):
-        classes[first_beat:] = beat_classes[first_beat:] + 4 * index
+        classes[first_beat:] = beat_classes[first_beat:] + N_CLASSES * index
     log_initial = np.log(key_chord_prior(*regions[0][1]))
-    model = (transitions, classes, log_initial)
+    model = (transitions, classes, log_initial, entry_bonus)
     return viterbi(logp, *model), model
 
 
@@ -730,10 +785,17 @@ def analyze_features(features: Features, params: Params | None = None) -> dict:
     durations = np.diff(features.boundaries)
     count = logp.shape[1]
 
+    # A bass note arriving on a chord's root makes changing to that chord
+    # cheaper (the upper notes still have to agree): the cue that separates a
+    # quick Gm | Bb from one long Gm when the two chords share two notes.
+    onsets = bass_onsets(features)
+    entry_bonus = np.zeros((N_STATES, count))
+    entry_bonus[:24] = params.bass_onset_bonus * np.repeat(onsets, 2, axis=0)
+
     # Pass 1: key-agnostic, meter-agnostic decode.
-    path, _ = _decode(logp, [(0, (None, None))], _bar_positions(count, None, 0), params)
-    beats_per_bar, phase = estimate_meter(path)
-    beat_classes = _bar_positions(count, beats_per_bar, phase)
+    path, _ = _decode(logp, [(0, (None, None))], _bar_positions(count, None, 0, features.subdivisions), params, entry_bonus)
+    beats_per_bar, phase = estimate_meter(path, features.subdivisions)
+    beat_classes = _bar_positions(count, beats_per_bar, phase, features.subdivisions)
 
     # Pass 2: infer key region(s) from those chords, decode under them, and
     # repeat until the keys are stable (usually immediately).
@@ -741,10 +803,10 @@ def analyze_features(features: Features, params: Params | None = None) -> dict:
     tried: list = []
     while regions not in tried and len(tried) < 3:
         tried.append(regions)
-        path, model = _decode(logp, regions, beat_classes, params)
+        path, model = _decode(logp, regions, beat_classes, params, entry_bonus)
         regions = key_regions(path, durations, features, params)
     if regions != tried[-1]:
-        path, model = _decode(logp, regions, beat_classes, params)
+        path, model = _decode(logp, regions, beat_classes, params, entry_bonus)
     posterior = posteriors(logp, *model)
 
     if params.detail:

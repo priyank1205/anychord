@@ -33,6 +33,7 @@ def majmin_scores(reference: list[tuple[float, float, str]], estimate: list[tupl
     overlabel share of plain-triad reference time where the estimate adds notes
     underlabel share of 4+-note reference time where the estimate is a bare triad
     seg       1 - max(over-, under-segmentation)
+    changes   F-measure of chord-change times (within 0.25 s): every change shown, none invented
     """
     end = max(segment[1] for segment in reference)
     times = np.arange(0.0, end, FRAME)
@@ -41,7 +42,7 @@ def majmin_scores(reference: list[tuple[float, float, str]], estimate: list[tupl
     scored = [i for i, label in enumerate(ref) if label is not None]
     nan = float("nan")
     if not scored:
-        return {"majmin": nan, "root": nan, "sevenths": nan, "exact": nan, "notes": nan, "bass": nan, "overlabel": nan, "underlabel": nan, "seg": nan}
+        return {"changes": nan, "majmin": nan, "root": nan, "sevenths": nan, "exact": nan, "notes": nan, "bass": nan, "overlabel": nan, "underlabel": nan, "seg": nan}
 
     def root(label):
         return label[0] if isinstance(label, tuple) else label
@@ -81,7 +82,29 @@ def majmin_scores(reference: list[tuple[float, float, str]], estimate: list[tupl
         "overlabel": mean([isinstance(est_full[i], tuple) and len(est_full[i][1]) > 3 for i in triad_frames]),
         "underlabel": mean([isinstance(est_full[i], tuple) and len(est_full[i][1]) <= 3 for i in rich_frames]),
         "seg": segmentation_score(reference, estimate),
+        "changes": change_f_measure(reference, estimate),
     }
+
+
+def _change_times(segments: list[tuple[float, float, str]]) -> np.ndarray:
+    times, previous = [], None
+    for start, _, label in segments:
+        parsed = parse_chord(label)
+        if previous is not None and parsed != previous:
+            times.append(start)
+        previous = parsed
+    return np.array(times)
+
+
+def change_f_measure(reference, estimate, tolerance: float = 0.25) -> float:
+    """Harmonic mean of change recall (each real change has an estimated one
+    nearby) and precision (each estimated change has a real one nearby)."""
+    ref, est = _change_times(reference), _change_times(estimate)
+    if not len(ref) or not len(est):
+        return float(len(ref) == len(est))
+    recall = np.mean([np.min(np.abs(est - t)) <= tolerance for t in ref])
+    precision = np.mean([np.min(np.abs(ref - t)) <= tolerance for t in est])
+    return float(2 * recall * precision / (recall + precision)) if recall + precision else 0.0
 
 
 def _directional_hamming(a: list[tuple[float, float]], b: list[tuple[float, float]]) -> float:

@@ -71,6 +71,25 @@ POWER_PROGRESSIONS = [
     [(0, "5"), (8, "5"), (10, "5"), (0, "5")],
 ]
 
+# Fast harmonic rhythm (fast=True): (degree, quality, beats). Line-end
+# turnarounds that flip between chords every beat, half-bar changes and
+# walking chords; in 4/4, each pattern fills whole bars.
+FAST_MAJOR = [
+    [(7, "maj", 4), (2, "min", 1), (5, "maj", 1), (2, "min", 1), (5, "maj", 1), (0, "maj", 8)],  # V | ii IV ii IV | I
+    [(0, "maj", 2), (5, "maj", 2), (7, "maj", 2), (5, "maj", 2)],  # I IV V IV, two beats each
+    [(9, "min", 3), (7, "maj", 1), (5, "maj", 4)],  # vi (3) V (1) | IV
+    [(0, "maj", 1), (2, "min", 1), (4, "min", 1), (5, "maj", 1), (7, "maj", 4)],  # walking I ii iii IV | V
+    [(5, "maj", 2), (7, "maj", 2), (0, "maj", 2), (9, "min", 2)],
+    [(0, "maj", 4), (4, "min", 1), (7, "maj", 1), (4, "min", 1), (7, "maj", 1)],  # I | iii V iii V
+]
+FAST_MINOR = [
+    [(0, "min", 2), (10, "maj", 2), (8, "maj", 2), (7, "maj", 2)],  # i VII VI V, two beats each
+    [(0, "min", 4), (5, "min", 1), (7, "maj", 1), (0, "min", 2)],  # i | iv V i
+    [(8, "maj", 1), (10, "maj", 1), (0, "min", 2), (8, "maj", 1), (10, "maj", 1), (0, "min", 2)],
+    [(3, "maj", 4), (5, "min", 1), (8, "maj", 1), (5, "min", 1), (8, "maj", 1)],  # III | iv VI iv VI
+    [(0, "min", 3), (10, "maj", 1), (8, "maj", 4)],
+]
+
 CHORD_INTERVALS = {
     "maj": [0, 4, 7],
     "min": [0, 3, 7],
@@ -199,13 +218,15 @@ def _drums(buffer: np.ndarray, beat_times: np.ndarray, beats_per_bar: int, level
         _add(buffer, time + period / 2, hat, level * 0.35)
 
 
-def make_song(seed: int, duration_bars: int | None = None, modulate: bool = False, extended: bool = False) -> Song:
+def make_song(seed: int, duration_bars: int | None = None, modulate: bool = False, extended: bool = False, fast: bool = False) -> Song:
     """Build one synthetic song. Same seed, same song.
 
     With modulate=True the last third moves up 1-2 semitones (the classic pop
     "truck driver's gear change"); the reference key stays the opening key.
     With extended=True the harmony uses sevenths, sus, add9, 6ths, 9/11/13,
     diminished/augmented, power chords and slash chords.
+    With fast=True chords change every 1-3 beats (4/4), including line-end
+    turnarounds like "C | Gm Bb Gm Bb | F" and chords pushed half a beat early.
     """
     rng = np.random.default_rng(seed)
     mode = "major" if rng.random() < 0.6 else "minor"
@@ -221,12 +242,19 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
         bank = POWER_PROGRESSIONS if power else EXTENDED_MAJOR if mode == "major" else EXTENDED_MINOR
         if power:
             mode = "minor"
+    if fast:
+        beats_per_bar = 4
+        bank = FAST_MAJOR if mode == "major" else FAST_MINOR
     verse, chorus = (bank[i] for i in rng.choice(len(bank), size=2, replace=False))
 
     # Chord plan in beats: mostly one chord per bar, sometimes split bars or held bars.
     plan: list[tuple[int, str, int]] = []
     sections = [verse, verse, chorus, chorus, verse, chorus]
     total_bars = duration_bars or int(rng.integers(20, 30))
+    section = 0
+    while fast and sum(length for *_, length in plan) < total_bars * beats_per_bar:
+        plan.extend(((tonic + degree) % 12, quality, length) for degree, quality, length in sections[section % len(sections)])
+        section += 1
     while sum(length for *_, length in plan) < total_bars * beats_per_bar:
         for degree, quality in sections[len(plan) // 4 % len(sections)]:
             style = rng.random()
@@ -245,6 +273,9 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
             root, quality, length = plan[index]
             plan[index] = ((root + shift) % 12, quality, length)
             tonics[index] = (tonic + shift) % 12
+    # Pushed chords: arrive half a beat early, as in most pop playing (after a
+    # chord of 2+ beats; pushing after a one-beat chord would leave half a beat).
+    pushed = [False] + [bool(rng.random() < 0.15) and plan[i - 1][2] >= 2 for i in range(1, len(plan))] if fast else [False] * len(plan)
 
     lead_in = float(rng.uniform(0.2, 1.5))
     drum_intro_bars = int(rng.integers(0, 2))
@@ -271,7 +302,9 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
     cursor = intro_beats
     plan_index = 0
     for root, quality, length in plan:
-        start, end = float(beat_times[cursor]), float(beat_times[cursor + length])
+        grid_start = float(beat_times[cursor])
+        start = grid_start - (beat / 2 if pushed[plan_index] else 0.0)
+        end = float(beat_times[cursor + length]) - (beat / 2 if plan_index + 1 < len(plan) and pushed[plan_index + 1] else 0.0)
         intervals = CHORD_INTERVALS[quality]
         pcs = [(root + interval) % 12 for interval in intervals]
         if extended:
@@ -296,9 +329,9 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
                     tone = _tone(_midi_hz(note, detune), end - start + 0.05, rng, _partials(rng, 8, 1.0), 0, attack=0.08, sustain=True)
                     _add(harmony, start, tone, 0.12)
                 continue
-            for step in range(length * 2):
+            for step in range(int(round((end - start) / (beat / 2)))):
                 time = start + step * beat / 2
-                on_beat = step % 2 == 0
+                on_beat = (step + pushed[plan_index]) % 2 == 0
                 if style == "strum" and (on_beat or rng.random() < 0.4):
                     for string, note in enumerate(voicing if rng.random() < 0.5 else voicing[::-1]):
                         tone = _tone(_midi_hz(note, detune), 1.2, rng, _partials(rng, 12, 1.2), 3.5, inharmonicity=1e-4)
@@ -316,7 +349,7 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
         # and a scale-step approach note into the next chord now and then.
         bass_base = 36 + ((bass_pc - 36) % 12)
         for offset in range(length):
-            time = start + offset * beat
+            time = start + offset * beat if offset == 0 else grid_start + offset * beat
             if offset % beats_per_bar == 0:
                 note = bass_base
             elif offset % beats_per_bar == 2 and beats_per_bar == 4:
@@ -337,7 +370,7 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
         for offset in range(length):
             if rng.random() < 0.2:
                 continue
-            time = start + offset * beat
+            time = grid_start + offset * beat
             if offset % 2 == 0:
                 candidates = [melody_note + d for d in range(-5, 6) if (melody_note + d) % 12 in pcs]
             else:
@@ -366,6 +399,6 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
 
     description = (
         f"{PC_NAMES[tonic]} {mode}, {tempo:.0f} BPM, {beats_per_bar}/4, detune {detune:+.0f}c, "
-        f"{'+'.join(harmony_style)}{', distorted' if distortion else ''}{', modulates' if modulate else ''}{', power chords' if power else ', extended' if extended else ''}"
+        f"{'+'.join(harmony_style)}{', distorted' if distortion else ''}{', modulates' if modulate else ''}{', power chords' if power else ', extended' if extended else ''}{', fast changes' if fast else ''}"
     )
     return Song(mix.astype(np.float32), SR, (tonic, mode), tempo, beats_per_bar, detune, chords, description)

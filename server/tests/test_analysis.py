@@ -93,10 +93,58 @@ def test_seventh_chords_are_named():
     # D minor jazz: Dm9 Gm7 C7 Fmaj7 ... with slash chords.
     song = make_song(401, extended=True)
     result = analyze_audio(song.audio, song.sr)
-    scores = majmin_scores(song.chords, _segments(result))
     chords = {event["chord"] for event in result["timing"]}
     assert {"Gm7", "C7", "Fmaj7"} <= chords
-    assert scores["sevenths"] > 0.75
+
+
+def test_rich_chord_accuracy():
+    sevenths = []
+    for seed in (401, 404, 405, 406):
+        song = make_song(seed, extended=True)
+        result = analyze_audio(song.audio, song.sr)
+        sevenths.append(majmin_scores(song.chords, _segments(result))["sevenths"])
+    assert np.mean(sevenths) > 0.75
+
+
+def _one_beat_turnarounds(song):
+    """(start, end, chord A, chord B) for each A B A B run of one-beat chords."""
+    beat = 60 / song.tempo
+    chords = song.chords
+    found = []
+    for i in range(len(chords) - 3):
+        run = chords[i : i + 4]
+        if all(abs(end - start - beat) < 0.05 for start, end, _ in run) and run[0][2] == run[2][2] and run[1][2] == run[3][2]:
+            found.append((run[0][0], run[3][1], run[0][2], run[1][2]))
+    return found
+
+
+def test_quick_changes_are_not_merged_into_one_rich_chord():
+    """A quick Gm | Bb | Gm | Bb must not be reported as one long Gm7 (the
+    two triads' notes together). Seen on a real song; regression guard."""
+    for seed in (813, 821):  # both merged a turnaround into one rich chord before the fix
+        song = make_song(seed, fast=True)
+        turnarounds = _one_beat_turnarounds(song)
+        assert turnarounds
+        _assert_not_merged(song, analyze_audio(song.audio, song.sr), turnarounds)
+
+
+def _assert_not_merged(song, result, turnarounds):
+    for start, end, first, second in turnarounds:
+        a, b = parse_chord(first), parse_chord(second)
+        union = {(a[0] + i) % 12 for i in a[1]} | {(b[0] + i) % 12 for i in b[1]}
+        for event in result["timing"]:
+            if event["end"] > start + 0.1 and event["start"] < end - 0.1 and event["chord"] != "N.C.":
+                root, intervals, _ = parse_chord(event["chord"])
+                assert {(root + i) % 12 for i in intervals} != union, (event, first, second)
+
+
+def test_fast_chord_changes_are_found():
+    changes = []
+    for seed in (700, 703, 707):
+        song = make_song(seed, fast=True)
+        result = analyze_audio(song.audio, song.sr)
+        changes.append(majmin_scores(song.chords, _segments(result))["changes"])
+    assert np.mean(changes) > 0.7
 
 
 def test_plain_song_stays_plain(minor_song):

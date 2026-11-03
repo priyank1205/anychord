@@ -58,6 +58,7 @@ Roots are spelled for the key (Bb in F major, A# in B major). Bass notes are spe
 npm run benchmark                                  # 40 synthetic songs
 python3 -m server.benchmark.run --seed 200 --modulate
 python3 -m server.benchmark.run --seed 500 --extended   # rich chords
+python3 -m server.benchmark.run --seed 700 --fast       # chords every 1-3 beats, pushed chords
 python3 -m server.benchmark.run --dataset ~/my-annotated-songs
 ```
 
@@ -81,6 +82,18 @@ Rich chords (`--extended`: jazz ii–V–Is, line clichés, sus/add9 pop, passin
 | MIREX "sevenths" (maj/min/7/maj7/m7) | 49% | **83%** |
 | Bass note (slash chords) | 75% | **87%** |
 | Over-labelling on plain-triad songs (extras invented) | 0% | **3–4%** |
+
+Fast harmonic rhythm (`--fast`: chords every 1–3 beats, line-end turnarounds like `C | Gm Bb Gm Bb | F`, chords pushed half a beat early), held-out songs:
+
+| Metric | Before | Now |
+|---|---|---|
+| Chord changes found (F-measure, ±0.25 s) | 61% | **78%** |
+| Root + major/minor | 79% | **87%** |
+| Turnarounds reported as one blended chord (Gm + Bb → "Gm7") | 15 of 91 | **3 of 91** |
+
+Three things did it. The chart is now decoded per half-beat, so pushed chords land where they're played. A bass note arriving on a new root makes that change cheaper. And evidence is no longer averaged across neighbouring beats, which had blended Gm | Bb into Gm7.
+
+The known weak spot is a chord that lasts one beat and shares two notes with its neighbour, flipping back and forth (Gm–Bb–Gm–Bb). It now shows as the main chord (Gm) rather than a made-up Gm7, but the flips themselves are usually missed. Even with chord changes made free, the per-beat audio evidence for the in-between chord is too weak; the previous chord is still ringing. A model trained on real recordings is the likely fix.
 
 Chords whose notes are mostly ambiguous are the weakest. G11 is close to F/G, Bm7b5 has the same notes as Dm6, and dim7/aug chords are symmetric, so the bass note has to decide. In those cases you'll often get a playable equivalent rather than the textbook name. The analyser leans towards *under*-labelling: it shows C where a song plays Cadd9 rather than invent extras.
 **Real-world accuracy** is the number that matters, and it hasn't been measured for this code yet. Published template-plus-HMM systems of this kind score roughly 70–80% majmin on real pop datasets in MIREX, so expect something in that range on dense mixes. To measure it, put songs in a folder as `name.wav` plus `name.lab`, where each line of the `.lab` file is `start end chord` (e.g. `12.40 14.95 A:min7`). Add an optional `name.key` containing e.g. `A minor`, then run the `--dataset` command above.
