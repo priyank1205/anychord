@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-from server.analysis import SR, AnalysisError, analyze_audio, find_core_progression
+from server.analysis import SR, AnalysisError, Params, _root_position, _simplify, _slash_bass, analyze_audio, find_core_progression
 from server.benchmark.metrics import majmin_scores
 from server.benchmark.synth import make_song
-from server.music import mirex_key_score, parse_key
+from server.music import mirex_key_score, parse_chord, parse_key
 
 
 def _segments(result):
@@ -79,3 +79,61 @@ def test_core_progression_prefers_tonic_rotation():
     chords = ["Am", "F", "C", "G"] * 3 + ["C", "G", "Am", "F"]
     assert find_core_progression(chords, "C") in {"C ➔ G ➔ Am ➔ F", "Am ➔ F ➔ C ➔ G"}
     assert find_core_progression(["C", "C", "G"], "C") == ""
+
+
+def _rich_share(result):
+    """Share of chord time labelled with more than a plain major/minor triad."""
+    voiced = [event for event in result["timing"] if event["chord"] != "N.C."]
+    total = sum(event["end"] - event["start"] for event in voiced)
+    rich = sum(event["end"] - event["start"] for event in voiced if len(parse_chord(event["chord"])[1]) != 3)
+    return rich / total
+
+
+def test_seventh_chords_are_named():
+    # D minor jazz: Dm9 Gm7 C7 Fmaj7 ... with slash chords.
+    song = make_song(401, extended=True)
+    result = analyze_audio(song.audio, song.sr)
+    scores = majmin_scores(song.chords, _segments(result))
+    chords = {event["chord"] for event in result["timing"]}
+    assert {"Gm7", "C7", "Fmaj7"} <= chords
+    assert scores["sevenths"] > 0.75
+
+
+def test_plain_song_stays_plain(minor_song):
+    """No inventing: a song of plain triads shouldn't sprout add9s and maj7s."""
+    song, result = minor_song
+    reference_rich = sum(e - s for s, e, label in song.chords if label != "N" and len(parse_chord(label)[1]) != 3)
+    assert reference_rich == 0
+    assert _rich_share(result) < 0.1
+
+
+def test_triads_only_mode(minor_song):
+    song, _ = minor_song
+    result = analyze_audio(song.audio, song.sr, Params(detail=False))
+    assert _rich_share(result) == 0
+
+
+def test_same_notes_are_named_the_usual_way():
+    assert _root_position(0, "6", 9) == (9, "m7", 0)  # C6/A -> Am7
+    assert _root_position(2, "m6", 9) == (11, "m7b5", 0)  # Dm6/B -> Bm7b5
+    assert _root_position(0, "sus2", 7) == (7, "sus4", 0)  # Csus2/G -> Gsus4
+    assert _root_position(0, "", 4) == (0, "", 4)  # C/E stays C/E
+
+
+def test_slash_bass_needs_a_held_bass_note():
+    held_third = np.zeros((12, 4))
+    held_third[4] = 1.0  # E held in the bass under C
+    held_third[0] = 0.3
+    assert _slash_bass(held_third, 0, "", Params()) == 4
+    walking = np.zeros((12, 4))
+    walking[0, [0, 2]] = 1.0  # root-fifth walking bass stays root position
+    walking[7, [1, 3]] = 1.0
+    assert _slash_bass(walking, 0, "", Params()) == 0
+
+
+def test_simplify():
+    assert _simplify("Bbmaj7/D") == "Bb"
+    assert _simplify("F#m9") == "F#m"
+    assert _simplify("Bm7b5") == "Bdim"
+    assert _simplify("G7sus4") == "Gsus4"
+    assert _simplify("E5") == "E5"

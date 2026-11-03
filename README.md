@@ -9,6 +9,7 @@ AnyChords bridges the gap between listening and playing. Simply paste a YouTube 
 ## Key Features
 
 - 🎸 **Automatic Chord Detection:** A tuned chroma + hidden-Markov-model pipeline converts YouTube audio into a playable chord chart. It is measured against a ground-truth benchmark (see [`server/README.md`](server/README.md)).
+- 🎷 **Every Chord Type the Song Uses:** major, minor, 7ths (maj7, m7, dominant 7, m7b5, dim7, mMaj7), sus2/sus4/7sus4, add9, 6ths, 9/11/13, dim, aug, power chords and slash chords (D/F#). Toggle **Full** / **Simple** to show every chord or just the triad to strum.
 - 🎼 **Key Detection:** The key comes from where the music rests (tonic, cadences, final chord), not just which notes appear. Key changes are reported, and chords are spelled for their key (Bb, not A#).
 - 🎯 **Honest Confidence:** Every chord carries a confidence score. Shaky calls are underlined in the chart, and edit mode offers the analyser's second guess as a one-click fix.
 - ⏱️ **Beat-Level Sync:** A continuous, flowing chord timeline that highlights the active chord exactly as the song plays.

@@ -52,7 +52,8 @@ export const playChordSound = async (chordName, instrument = 'Piano') => {
     await initAudio();
   }
 
-  const baseChord = chordName.split('/')[0].trim();
+  // "D/F#": play D with F# as the lowest note (piano only; a ukulele has no low bass).
+  const [baseChord, bassNote] = chordName.split('/').map((part) => part.trim());
 
   const chord = Chord.get(baseChord);
   if (!chord.empty && chord.notes.length > 0) {
@@ -73,6 +74,9 @@ export const playChordSound = async (chordName, instrument = 'Piano') => {
 
     if (!isUke && notesToPlay[0].endsWith('3')) {
        notesToPlay.push(`${chord.notes[0]}4`);
+    }
+    if (!isUke && bassNote) {
+      notesToPlay.unshift(`${bassNote}2`);
     }
 
     const duration = isUke ? "4n" : "2n";

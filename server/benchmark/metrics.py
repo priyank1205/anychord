@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import numpy as np
 
-from server.music import NO_CHORD, reduce_majmin
+from server.music import NO_CHORD, parse_chord, reduce_majmin
 
 FRAME = 0.01  # seconds; same sampling resolution mir_eval uses
+_SEVENTHS = {frozenset(q) for q in ((0, 4, 7), (0, 3, 7), (0, 4, 7, 10), (0, 4, 7, 11), (0, 3, 7, 10))}
+_TRIADS = {frozenset((0, 4, 7)), frozenset((0, 3, 7))}
 
 
-def _sample(segments: list[tuple[float, float, str]], times: np.ndarray) -> list:
+def _sample(segments: list[tuple[float, float, str]], times: np.ndarray, reduce=reduce_majmin) -> list:
     labels: list = [NO_CHORD] * len(times)
     for start, end, label in segments:
-        reduced = reduce_majmin(label)
+        reduced = reduce(label)
         first, last = np.searchsorted(times, [start, end])
         for index in range(first, last):
             labels[index] = reduced
@@ -20,25 +22,66 @@ def _sample(segments: list[tuple[float, float, str]], times: np.ndarray) -> list
 
 
 def majmin_scores(reference: list[tuple[float, float, str]], estimate: list[tuple[float, float, str]]) -> dict:
-    """Weighted chord-symbol recall (majmin and root) plus segmentation quality.
+    """Weighted chord-symbol recall at several levels of detail.
 
-    Reference frames whose chord is outside maj/min/N (sus, dim, ...) are
-    excluded, exactly as the MIREX majmin metric does.
+    majmin    root + major/minor (MIREX); sus, dim, aug, power refs excluded
+    root      root only, over the same frames as majmin
+    sevenths  root + exact notes, refs limited to maj/min/7/maj7/min7 (MIREX)
+    exact     root + exact pitch-class set, every reference chord
+    notes     same notes and same bass, whatever the name (Am7 == C6/A): what a player hears
+    bass      lowest note (slash chords), every reference chord
+    overlabel share of plain-triad reference time where the estimate adds notes
+    underlabel share of 4+-note reference time where the estimate is a bare triad
+    seg       1 - max(over-, under-segmentation)
     """
     end = max(segment[1] for segment in reference)
     times = np.arange(0.0, end, FRAME)
     ref = _sample(reference, times)
     est = _sample(estimate, times)
     scored = [i for i, label in enumerate(ref) if label is not None]
+    nan = float("nan")
     if not scored:
-        return {"majmin": float("nan"), "root": float("nan"), "seg": float("nan")}
-    majmin = np.mean([ref[i] == est[i] for i in scored])
+        return {"majmin": nan, "root": nan, "sevenths": nan, "exact": nan, "notes": nan, "bass": nan, "overlabel": nan, "underlabel": nan, "seg": nan}
 
     def root(label):
         return label[0] if isinstance(label, tuple) else label
 
-    root_score = np.mean([root(ref[i]) == root(est[i]) for i in scored])
-    return {"majmin": float(majmin), "root": float(root_score), "seg": segmentation_score(reference, estimate)}
+    ref_full = _sample(reference, times, parse_chord)
+    est_full = _sample(estimate, times, parse_chord)
+
+    def same_notes(a, b):
+        if a == NO_CHORD or b == NO_CHORD:
+            return a == b
+        return isinstance(a, tuple) and isinstance(b, tuple) and a[0] == b[0] and a[1] == b[1]
+
+    def sounding(label):
+        if not isinstance(label, tuple):
+            return label
+        root, intervals, bass_interval = label
+        return frozenset((root + i) % 12 for i in intervals) | {(root + bass_interval) % 12}, (root + bass_interval) % 12
+
+    def bass(label):
+        return label if not isinstance(label, tuple) else (label[0] + label[2]) % 12
+
+    exact_frames = [i for i, label in enumerate(ref_full) if label is not None]
+    seventh_frames = [i for i in exact_frames if ref_full[i] == NO_CHORD or ref_full[i][1] in _SEVENTHS]
+    triad_frames = [i for i in exact_frames if ref_full[i] != NO_CHORD and ref_full[i][1] in _TRIADS]
+    rich_frames = [i for i in exact_frames if ref_full[i] != NO_CHORD and len(ref_full[i][1]) >= 4]
+
+    def mean(values):
+        return float(np.mean(values)) if values else nan
+
+    return {
+        "majmin": mean([ref[i] == est[i] for i in scored]),
+        "root": mean([root(ref[i]) == root(est[i]) for i in scored]),
+        "sevenths": mean([same_notes(ref_full[i], est_full[i]) for i in seventh_frames]),
+        "exact": mean([same_notes(ref_full[i], est_full[i]) for i in exact_frames]),
+        "notes": mean([sounding(ref_full[i]) == sounding(est_full[i]) for i in exact_frames]),
+        "bass": mean([bass(ref_full[i]) == bass(est_full[i]) for i in exact_frames]),
+        "overlabel": mean([isinstance(est_full[i], tuple) and len(est_full[i][1]) > 3 for i in triad_frames]),
+        "underlabel": mean([isinstance(est_full[i], tuple) and len(est_full[i][1]) <= 3 for i in rich_frames]),
+        "seg": segmentation_score(reference, estimate),
+    }
 
 
 def _directional_hamming(a: list[tuple[float, float]], b: list[tuple[float, float]]) -> float:

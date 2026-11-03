@@ -22,10 +22,21 @@ server/benchmark):
    chroma profile. Changing key is expensive, so borrowed chords don't
    trigger it but a sustained modulation (last chorus up a step) does. Chords
    are then re-decoded under the key(s), and spelled for them (Bb, not A#).
-7. Confidence comes from forward-backward posteriors, not a constant.
+7. Chord detail: a second chord HMM over 12 roots x 24 chord types (sevenths,
+   sus, add9, 6ths, 9/11/13, dim, aug, power chords), guided by the first
+   pass. Evidence comes from a gentler-compressed spectrum with each note's
+   2nd/3rd harmonics removed (otherwise E's overtone B fakes Cmaj7), averaged
+   over neighbouring beats so a melody's passing note doesn't fake an add9.
+   Richer chords must earn their place on every beat. Slash chords come from
+   a contrast bass chroma, and same-note spellings are named the usual way
+   (Am7, not C6/A).
+8. Confidence = forward-backward probability that the chord you'd strum is
+   right (C vs Am), not a constant; doubts like C vs Cmaj7 become the
+   "alternative" instead.
 
-Measured on the synthetic benchmark (python -m server.benchmark.run), held-out
-songs: chord majmin 96.5% (old analyser 77.7%), key score 0.99 (0.79).
+Held-out synthetic results (python -m server.benchmark.run): chord majmin
+96.5% (old analyser 77.7%), key score 0.99 (0.79); on rich-chord songs, exact
+chord 63% and MIREX sevenths 83% (triads-only: 28% / 49%).
 """
 
 from __future__ import annotations
@@ -35,7 +46,7 @@ from dataclasses import dataclass
 import librosa
 import numpy as np
 
-from server.music import MAJOR, MINOR, chord_name, format_key, key_signature_names
+from server.music import MAJOR, MINOR, QUALITY_INTERVALS, chord_label, format_key, key_signature_names
 
 SR = 22050
 HOP = 512
@@ -46,7 +57,6 @@ NOTE_MIDI = np.arange(FMIN_MIDI, FMIN_MIDI + N_NOTES)
 
 N_STATE = 24  # index of "no chord"; 0..23 are root*2 + (0 major | 1 minor)
 N_STATES = 25
-QUALITIES = ("maj", "min")
 
 
 class AnalysisError(Exception):
@@ -73,6 +83,25 @@ class Params:
     last_chord_bonus: float = 6.0
     cadence_bonus: float = 1.5
     key_change_cost: float = 25.0
+    # Chord detail pass (sevenths, sus, add9, 9/11/13, dim, aug, power, slash)
+    detail_compression: float = 30.0  # gentler than `compression`: overtones must not pass as 7ths/9ths
+    detail_register: tuple = (58.0, 14.0)  # (centre MIDI, width) of the notes that count as harmony
+    overtone_decay: float = 0.4  # strength of the 2nd harmonic removed per note (0 = off); 3rd = decay^2
+    presence_slope: float = 12.0  # sigmoid steepness of "is this note sounding?"
+    presence_threshold: float = 0.3  # level relative to the loudest note where that flips
+    presence_floor: float = 0.03  # no single note can be more certain than this, either way
+    missing_weight: float = 1.0  # cost of a chord tone that isn't sounding
+    extra_weight: float = 0.5  # cost of a sounding note outside the chord (melodies wander)
+    third_weight: float = 1.5  # ... except a 3rd under a sus/power chord, whose point is having none
+    detail_smoothing: int = 1  # average over +-n beats inside a first-pass chord
+    detail_bass_weight: float = 3.0  # how strongly the bass note decides the root
+    guide_weight: float = 1.0  # trust in the first pass's root and third
+    guide_floor: float = 0.05  # caps how hard the first pass can veto a chord
+    tier_penalty: tuple = (0.0, 0.5, 1.0, 1.5, 2.0)  # per-beat cost of each complexity tier
+    entry_penalty: tuple = (0.0, 1.0, 2.0, 3.0, 4.0)  # one-off cost of starting such a chord
+    same_root_change: float = 0.5  # share of chord changes that keep the root (C -> Cmaj7)
+    slash_root_level: float = 0.6  # an inversion's root must be this quiet in the bass, relative to the bass note
+    detail: bool = True  # False: major/minor triads only
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +114,8 @@ class Features:
     boundaries: np.ndarray  # beat boundary times, length n + 1
     treble: np.ndarray  # (12, n) treble chroma, each column sums to 1 (or 0 if silent)
     bass: np.ndarray  # (12, n) bass chroma, each column sums to 1 (or 0)
+    detail: np.ndarray  # (12, n) full-range chroma with gentler compression, max-normalised per beat
+    detail_bass: np.ndarray  # (12, n) bass chroma with the same contrast, max-normalised per beat
     loudness: np.ndarray  # (n,) relative harmonic level in [0, 1]
     tempo: float
 
@@ -202,14 +233,63 @@ def chroma_from_spectra(beat_spectra: np.ndarray, compression: float = Params.co
     return _fold(salience, _TREBLE_WEIGHTS), _fold(salience, _BASS_WEIGHTS), loudness
 
 
+# Only the 2nd and 3rd harmonics (octave, octave + fifth) are removed. The 5th
+# harmonic of the bass note lands exactly on a real chord third (Eb2 -> G4);
+# subtracting it erased real thirds and turned Eb into "Eb5" on real songs.
+_OVERTONE_OFFSETS = [12, 19]
+
+
+def suppress_overtones(beat_spectra: np.ndarray, decay: float) -> np.ndarray:
+    """Remove each note's 2nd and 3rd harmonics, lowest note first.
+
+    The 3rd harmonic of a chord's third is a major 7th above the root (E -> B
+    in C major) and the 3rd harmonic of its fifth is the 9th (G -> D): left in,
+    they turn plain triads into "Cmaj7" and "Cadd9".
+    """
+    if decay <= 0:
+        return beat_spectra
+    remaining = beat_spectra.copy()
+    for note in range(N_NOTES):
+        for order, offset in enumerate(_OVERTONE_OFFSETS, start=1):
+            if note + offset < N_NOTES:
+                remaining[note + offset] = np.maximum(remaining[note + offset] - decay**order * remaining[note], 0)
+    return remaining
+
+
+def detail_chroma(
+    beat_spectra: np.ndarray,
+    compression: float = Params.detail_compression,
+    overtone_decay: float = Params.overtone_decay,
+    register: tuple = Params.detail_register,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Full-range and bass chroma for judging extra notes (7ths, 9ths ...) and
+    the bass note, with enough contrast that overtones stay below real notes.
+
+    Each column is scaled so its loudest pitch class is 1.
+    """
+    beat_spectra = suppress_overtones(beat_spectra, overtone_decay)
+    salience = np.log1p(compression * beat_spectra / (beat_spectra.max() + 1e-12))
+    result = []
+    centre, width = register
+    harmony_weights = np.exp(-0.5 * ((NOTE_MIDI - centre) / width) ** 2) * (NOTE_MIDI >= 28)
+    for weights in (harmony_weights, _BASS_WEIGHTS):
+        chroma = _fold(salience, weights)
+        peaks = chroma.max(axis=0, keepdims=True)
+        result.append(np.divide(chroma, peaks, out=np.zeros_like(chroma), where=peaks > 1e-12))
+    return result[0], result[1]
+
+
 def extract_features(y: np.ndarray, sr: int = SR, params: Params | None = None) -> Features:
     params = params or Params()
     boundaries, beat_spectra, tempo_bpm = beat_spectrum(y, sr)
     treble, bass, loudness = chroma_from_spectra(beat_spectra, params.compression)
+    detail, detail_bass = detail_chroma(beat_spectra, params.detail_compression, params.overtone_decay, params.detail_register)
     return Features(
         boundaries=boundaries,
         treble=treble,
         bass=bass,
+        detail=detail,
+        detail_bass=detail_bass,
         loudness=loudness,
         tempo=tempo_bpm,
     )
@@ -455,6 +535,173 @@ def key_regions(path: np.ndarray, durations: np.ndarray, features: Features, par
 
 
 # ---------------------------------------------------------------------------
+# Chord detail: the full vocabulary, guided by the major/minor pass
+# ---------------------------------------------------------------------------
+
+DETAIL_QUALITIES = list(QUALITY_INTERVALS)
+_Q = len(DETAIL_QUALITIES)
+# How unusual each chord type is. Every tier up must be earned by evidence on
+# every beat, which keeps a passing melody note from turning C into Cadd9.
+# sus2 sits above power chords: a distorted guitar's C5 throws a strong D
+# overtone (3rd harmonic of G) that would otherwise read as Csus2.
+_TIER = {
+    "": 0, "m": 0, "7": 1, "m7": 1, "maj7": 1, "5": 2, "sus4": 2, "sus2": 3, "6": 2, "m6": 2,
+    "add9": 2, "madd9": 2, "dim": 2, "9": 3, "m9": 3, "maj9": 3, "m7b5": 3, "dim7": 3,
+    "7sus4": 3, "mMaj7": 3, "aug": 3, "11": 4, "m11": 4, "13": 4,
+}
+
+
+def _detail_tables() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    membership = np.zeros((12 * _Q, 12))
+    no_third = np.zeros((12 * _Q, 12))  # thirds that would contradict a sus/power chord
+    image = np.zeros((12 * _Q, 2), dtype=int)  # first-pass states that support this chord
+    tier = np.zeros(12 * _Q, dtype=int)
+    for root in range(12):
+        for index, quality in enumerate(DETAIL_QUALITIES):
+            state = root * _Q + index
+            intervals = set(QUALITY_INTERVALS[quality])
+            membership[state, [(root + i) % 12 for i in intervals]] = 1
+            if 4 in intervals and 3 not in intervals:
+                image[state] = (root * 2, root * 2)
+            elif 3 in intervals and 4 not in intervals:
+                image[state] = (root * 2 + 1, root * 2 + 1)
+            else:  # no third (sus, power, 11): either first-pass reading of the root will do
+                image[state] = (root * 2, root * 2 + 1)
+                no_third[state, [(root + 3) % 12, (root + 4) % 12]] = 1
+            tier[state] = _TIER[quality]
+    return membership, image, tier, no_third
+
+
+_DETAIL_MEMBERS, _DETAIL_IMAGE, _DETAIL_TIER, _DETAIL_NO_THIRD = _detail_tables()
+
+
+def _smooth_within_chords(detail: np.ndarray, path: np.ndarray, radius: int) -> np.ndarray:
+    """Average over neighbouring beats of the same first-pass chord.
+
+    Chord tones recur (sustained, strummed again, or cycled by an arpeggio);
+    a melody's passing note usually lasts one beat and gets diluted.
+    """
+    if radius <= 0:
+        return detail
+    smoothed = detail.copy()
+    for t in range(detail.shape[1]):
+        lo, hi = t, t
+        while lo > max(0, t - radius) and path[lo - 1] == path[t]:
+            lo -= 1
+        while hi < min(len(path) - 1, t + radius) and path[hi + 1] == path[t]:
+            hi += 1
+        smoothed[:, t] = detail[:, lo : hi + 1].mean(axis=1)
+    return smoothed
+
+
+def detail_emissions(features: Features, path: np.ndarray, posterior: np.ndarray, params: Params) -> np.ndarray:
+    """(12 * n_qualities, n beats) log-scores for every root/quality pair."""
+    detail = _smooth_within_chords(features.detail, path, params.detail_smoothing)
+    presence = 1.0 / (1.0 + np.exp(-params.presence_slope * (detail - params.presence_threshold)))
+    presence = np.clip(presence, params.presence_floor, 1 - params.presence_floor)
+    notes = params.missing_weight * (_DETAIL_MEMBERS @ np.log(presence))
+    outside = params.extra_weight * (1 - _DETAIL_MEMBERS) + (params.third_weight - params.extra_weight) * _DETAIL_NO_THIRD
+    notes += outside @ np.log(1 - presence)
+
+    # The bass should be the root, or failing that another chord tone (an inversion).
+    roots = np.repeat(np.arange(12), _Q)
+    inversion = np.max(_DETAIL_MEMBERS[:, :, None] * features.detail_bass[None, :, :], axis=1)
+    bass_fit = np.maximum(features.detail_bass[roots], 0.6 * inversion)
+    guide = np.maximum(posterior[_DETAIL_IMAGE[:, 0]], posterior[_DETAIL_IMAGE[:, 1]])
+
+    return (
+        notes
+        + params.detail_bass_weight * np.log(bass_fit + 0.1)
+        + params.guide_weight * np.log(guide + params.guide_floor)
+        - np.asarray(params.tier_penalty)[_DETAIL_TIER][:, None]
+    )
+
+
+def _detail_transitions(params: Params) -> np.ndarray:
+    states = 12 * _Q
+    same_root = np.kron(np.eye(12), np.ones((_Q, _Q))).astype(bool)
+    matrices = []
+    for change in (params.change_downbeat, params.change_midbar, params.change_offbeat, params.change_unknown):
+        matrix = np.where(same_root, change * params.same_root_change / (_Q - 1), change * (1 - params.same_root_change) / (states - _Q))
+        np.fill_diagonal(matrix, 1 - change)
+        log_matrix = np.log(matrix) - np.asarray(params.entry_penalty)[_DETAIL_TIER][None, :]
+        np.fill_diagonal(log_matrix, np.log(1 - change))
+        matrices.append(log_matrix)
+    return np.stack(matrices)
+
+
+def refine_chords(features: Features, path: np.ndarray, posterior: np.ndarray, beat_classes: np.ndarray, params: Params):
+    """Second pass: label every voiced beat with a root/quality pair.
+
+    Returns (detail state per beat, -1 where the first pass found no chord) and
+    the detail emissions (for confidence).
+    """
+    emissions = detail_emissions(features, path, posterior, params)
+    transitions = _detail_transitions(params)
+    detail = np.full(len(path), -1)
+    voiced = path != N_STATE
+    start = 0
+    while start < len(path):
+        if not voiced[start]:
+            start += 1
+            continue
+        end = start
+        while end < len(path) and voiced[end]:
+            end += 1
+        run = slice(start, end)
+        detail[run] = viterbi(emissions[:, run], transitions, beat_classes[run], np.zeros(12 * _Q))
+        start = end
+    return detail, emissions
+
+
+_SIMPLE_QUALITY = {
+    "7": "", "maj7": "", "6": "", "add9": "", "9": "", "maj9": "", "13": "", "m7": "m", "m6": "m", "madd9": "m",
+    "m9": "m", "m11": "m", "mMaj7": "m", "m7b5": "dim", "dim7": "dim", "7sus4": "sus4", "11": "sus4",
+}
+
+
+_FAMILY = np.array([_SIMPLE_QUALITY.get(quality, quality) for quality in DETAIL_QUALITIES])
+
+
+def _simplify(chord: str) -> str:
+    """Bmaj7/D# -> B, F#m9 -> F#m: the triad a beginner would play."""
+    body = chord.split("/")[0]
+    root = body[:2] if body[1:2] in ("#", "b") else body[:1]
+    suffix = body[len(root):]
+    return root + _SIMPLE_QUALITY.get(suffix, suffix)
+
+
+def _root_position(root: int, quality: str, bass: int) -> tuple[int, str, int]:
+    """Prefer the spelling with the bass as root when one exists: C6/A -> Am7,
+    Dm6/B -> Bm7b5, Csus2/G -> Gsus4."""
+    if not bass:
+        return root, quality, bass
+    notes = {(root + interval) % 12 for interval in QUALITY_INTERVALS[quality]}
+    new_root = (root + bass) % 12
+    for candidate, intervals in QUALITY_INTERVALS.items():
+        if {(new_root + interval) % 12 for interval in intervals} == notes:
+            return new_root, candidate, 0
+    return root, quality, bass
+
+
+def _slash_bass(bass: np.ndarray, root: int, quality: str, params: Params) -> int:
+    """Bass interval above the root for an inversion (C/E -> 4), or 0.
+
+    `bass` is the max-normalised bass chroma over the chord's beats. A walking
+    root-fifth bass keeps the root loud, so it stays in root position.
+    """
+    level = bass.mean(axis=1)
+    if level.max() <= 0:
+        return 0
+    level = level / level.max()
+    lowest = int(np.argmax(level))
+    interval = (lowest - root) % 12
+    if interval == 0 or interval not in QUALITY_INTERVALS[quality] or level[root] > params.slash_root_level:
+        return 0
+    return interval
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -500,33 +747,62 @@ def analyze_features(features: Features, params: Params | None = None) -> dict:
         path, model = _decode(logp, regions, beat_classes, params)
     posterior = posteriors(logp, *model)
 
+    if params.detail:
+        detail, detail_scores = refine_chords(features, path, posterior, beat_classes, params)
+    else:  # major/minor only: map first-pass states onto the detail grid
+        detail = np.where(path == N_STATE, -1, (path // 2) * _Q + path % 2)
+        detail_scores = None
+
     region_of_beat = np.zeros(count, dtype=int)
     for index, (first_beat, _) in enumerate(regions):
         region_of_beat[first_beat:] = index
 
-    def label(state: int, beat: int) -> str:
-        if state == N_STATE:
+    def label(state: int, beat: int, bass: int = 0) -> str:
+        if state < 0:
             return "N.C."
-        names = key_signature_names(*regions[region_of_beat[beat]][1])
-        return chord_name(state // 2, QUALITIES[state % 2], names)
+        root, index = divmod(int(state), _Q)
+        return chord_label(root, DETAIL_QUALITIES[index], key_signature_names(*regions[region_of_beat[beat]][1]), bass)
 
     timing: list[dict] = []
     event_region: list[int] = []
     start = 0
     for t in range(1, count + 1):
-        if t < count and path[t] == path[start] and region_of_beat[t] == region_of_beat[start]:
+        if t < count and detail[t] == detail[start] and region_of_beat[t] == region_of_beat[start]:
             continue
-        state = int(path[start])
-        span = posterior[:, start:t].mean(axis=1)
-        runner_up = int(np.argsort(span)[-2]) if span.argmax() == state else int(span.argmax())
-        event = {
-            "chord": label(state, start),
-            "start": round(float(features.boundaries[start]), 3),
-            "end": round(float(features.boundaries[t]), 3),
-            "confidence": round(float(span[state]), 3),
-        }
-        if span[runner_up] >= 0.15:
-            event["alternative"] = label(runner_up, start)
+        state = int(detail[start])
+        first_pass = posterior[:, start:t].mean(axis=1)
+        event = {"start": round(float(features.boundaries[start]), 3), "end": round(float(features.boundaries[t]), 3)}
+        if state < 0:
+            event.update(chord="N.C.", confidence=round(float(first_pass[N_STATE]), 3))
+        else:
+            root, index = divmod(state, _Q)
+            image = _DETAIL_IMAGE[state]
+            root_confidence = float(max(first_pass[image[0]], first_pass[image[1]]))
+            if detail_scores is not None:
+                same_root = detail_scores[root * _Q : (root + 1) * _Q, start:t].mean(axis=1)
+                quality_probs = np.exp(same_root - same_root.max())
+                quality_probs /= quality_probs.sum()
+            else:
+                quality_probs = np.eye(_Q)[index]
+            bass = _slash_bass(features.detail_bass[:, start:t], root, DETAIL_QUALITIES[index], params)
+            named_root, named_quality, bass = _root_position(root, DETAIL_QUALITIES[index], bass)
+            named = named_root * _Q + DETAIL_QUALITIES.index(named_quality)
+            # Confidence = is the chord you'd strum right? C vs Cmaj7 doesn't
+            # lower it (that doubt shows up as the alternative); C vs Am does.
+            family = _FAMILY[index]
+            family_probability = float(quality_probs[_FAMILY == family].sum())
+            event.update(chord=label(named, start, bass), confidence=round(root_confidence * family_probability, 3))
+            # Runner-up: another type on the same root (C vs Cmaj7) or another
+            # first-pass chord (C vs Am), whichever is more likely.
+            quality_probs[index] = 0
+            other_quality = int(np.argmax(quality_probs))
+            others = first_pass.copy()
+            others[[image[0], image[1], N_STATE]] = 0
+            other_chord = int(np.argmax(others))
+            if quality_probs[other_quality] >= max(0.15, others[other_chord]):
+                event["alternative"] = label(root * _Q + other_quality, start)
+            elif others[other_chord] >= 0.15:
+                event["alternative"] = label((other_chord // 2) * _Q + other_chord % 2, start)
         timing.append(event)
         event_region.append(int(region_of_beat[start]))
         start = t
@@ -564,7 +840,8 @@ def analyze_features(features: Features, params: Params | None = None) -> dict:
         "meter": f"{beats_per_bar or 4}/4",
         "confidence": round(confidence, 3),
         "timing": timing,
-        "progression": find_core_progression(main_chords, label(tonic * 2 + (mode == MINOR), tonic_beat)),
+        "progression": find_core_progression(main_chords, label(tonic * _Q + (mode == MINOR), tonic_beat))
+        or find_core_progression([_simplify(chord) for chord in main_chords], label(tonic * _Q + (mode == MINOR), tonic_beat)),
     }
 
 

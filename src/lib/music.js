@@ -42,15 +42,46 @@ export function transposeKey(text, semitones) {
   return formatKey({ tonic: mod12(key.tonic + semitones), mode: key.mode });
 }
 
+const LETTERS = "CDEFGAB";
+const LETTER_PC = [0, 2, 4, 5, 7, 9, 11];
+const INTERVAL_STEPS = { 1: 1, 2: 1, 3: 2, 4: 2, 5: 3, 6: 4, 7: 4, 8: 4, 9: 5, 10: 6, 11: 6 };
+const CHORD_PATTERN = /^([A-G][#b]?)([^/]*)(?:\/([A-G][#b]?))?$/;
+
+// The note `interval` semitones above `rootName`, spelled by letter: the
+// major third above D is F#, never Gb, whatever the key signature says.
+function spellAbove(rootName, interval) {
+  const letter = (LETTERS.indexOf(rootName[0]) + INTERVAL_STEPS[interval]) % 7;
+  const offset = mod12(NOTE_INDEX[rootName] + interval - LETTER_PC[letter] + 6) - 6;
+  const accidental = { 0: "", 1: "#", [-1]: "b" }[offset];
+  return accidental === undefined ? null : LETTERS[letter] + accidental;
+}
+
 // Transpose a chord symbol and spell it for `keyText` (the key it ends up in).
 // Untransposed chords are returned untouched so manual edits stay as typed.
 export function transposeChord(chord, semitones, keyText) {
   if (!semitones || !chord || chord === "N.C.") return chord;
+  const match = CHORD_PATTERN.exec(chord.trim());
+  if (!match || NOTE_INDEX[match[1]] === undefined) return chord;
+  const [, root, suffix, bass] = match;
   const names = keySignatureNames(parseKey(keyText));
-  return chord.replace(/(^|\/)([A-G](?:#|b)?)/g, (match, prefix, root) => {
-    const index = NOTE_INDEX[root];
-    return index === undefined ? match : `${prefix}${names[mod12(index + semitones)]}`;
-  });
+  const newRoot = names[mod12(NOTE_INDEX[root] + semitones)];
+  if (!bass || NOTE_INDEX[bass] === undefined) return newRoot + suffix;
+  const interval = mod12(NOTE_INDEX[bass] - NOTE_INDEX[root]);
+  const newBass = (interval && spellAbove(newRoot, interval)) || names[mod12(NOTE_INDEX[bass] + semitones)];
+  return `${newRoot}${suffix}/${newBass}`;
+}
+
+// The triad a beginner would strum: Bbmaj7/D -> Bb, F#m9 -> F#m, Bm7b5 -> Bdim.
+const SIMPLE_SUFFIX = {
+  7: "", maj7: "", 6: "", add9: "", 9: "", maj9: "", 13: "", m7: "m", m6: "m", madd9: "m",
+  m9: "m", m11: "m", mMaj7: "m", m7b5: "dim", dim7: "dim", "7sus4": "sus4", 11: "sus4",
+};
+
+export function simplifyChord(chord) {
+  const match = CHORD_PATTERN.exec((chord ?? "").trim());
+  if (!match) return chord;
+  const [, root, suffix] = match;
+  return root + (SIMPLE_SUFFIX[suffix] ?? suffix);
 }
 
 // Which key is in force at `time`, given the analyser's headline key plus any

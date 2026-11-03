@@ -292,3 +292,4 @@ button { cursor: pointer; }
 .chord-alt { padding: 2px 7px; border: 1px solid rgba(190,160,248,.28); border-radius: 999px; color: #cbb8f2; background: rgba(190,160,248,.08); font-family: "DM Mono", monospace; font-size: 10px; white-space: nowrap; cursor: pointer; }
 .chord-alt:hover { background: rgba(190,160,248,.2); color: #eee6f8; }
 .song-facts dd.key-change { margin-top: 4px; color: #a89dac; font-size: 11px; }
+.toolbar-switches { display: flex; flex-wrap: wrap; gap: 10px; }

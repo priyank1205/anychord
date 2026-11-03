@@ -40,6 +40,37 @@ MINOR_PROGRESSIONS = [
     [(0, "min"), (3, "maj"), (10, "maj"), (5, "min")],  # i III VII iv
 ]
 
+# Extended-vocabulary songs (extended=True): jazz ii-V-Is, line clichés,
+# sus/add9 pop, passing diminished chords, blues dominants, and power-chord
+# rock. Quality names follow server.music.QUALITY_INTERVALS.
+EXTENDED_MAJOR = [
+    [(2, "min7"), (7, "7"), (0, "maj7"), (0, "maj7")],  # ii7 V7 Imaj7
+    [(2, "m9"), (7, "13"), (0, "maj9"), (0, "6")],  # ii9 V13 Imaj9 I6
+    [(0, "add9"), (7, "sus4"), (7, "maj"), (9, "min7")],  # Iadd9 Vsus4 V vi7
+    [(0, "maj"), (0, "maj7"), (0, "7"), (5, "maj")],  # line cliché
+    [(0, "maj"), (1, "dim7"), (2, "min7"), (7, "7")],  # I #I°7 ii7 V7
+    [(0, "maj"), (0, "aug"), (0, "6"), (0, "7")],  # I I+ I6 I7
+    [(5, "maj7"), (4, "min7"), (2, "min7"), (0, "maj7")],  # IVmaj7 iii7 ii7 Imaj7
+    [(0, "sus2"), (0, "maj"), (5, "sus2"), (5, "maj")],  # sus2 resolutions
+    [(7, "7sus4"), (7, "7"), (0, "maj"), (0, "add9")],
+    [(5, "maj"), (7, "11"), (0, "maj"), (9, "min")],  # IV V11 I vi
+    [(0, "7"), (5, "7"), (0, "7"), (7, "9")],  # blues
+]
+EXTENDED_MINOR = [
+    [(2, "m7b5"), (7, "7"), (0, "min7"), (0, "m9")],  # iiø7 V7 i7
+    [(0, "min"), (0, "mMaj7"), (0, "min7"), (0, "m6")],  # minor line cliché
+    [(0, "m9"), (5, "min7"), (10, "7"), (3, "maj7")],
+    [(0, "m11"), (5, "7"), (0, "m11"), (5, "7")],  # dorian vamp
+    [(0, "min"), (10, "maj"), (8, "maj7"), (7, "7")],
+    [(0, "min7"), (11, "dim7"), (0, "min"), (7, "7sus4")],  # i7 vii°7 i Vsus
+    [(0, "madd9"), (8, "maj"), (3, "maj"), (2, "dim")],
+]
+POWER_PROGRESSIONS = [
+    [(0, "5"), (3, "5"), (5, "5"), (0, "5")],
+    [(0, "5"), (10, "5"), (5, "5"), (7, "5")],
+    [(0, "5"), (8, "5"), (10, "5"), (0, "5")],
+]
+
 CHORD_INTERVALS = {
     "maj": [0, 4, 7],
     "min": [0, 3, 7],
@@ -47,8 +78,32 @@ CHORD_INTERVALS = {
     "maj7": [0, 4, 7, 11],
     "min7": [0, 3, 7, 10],
     "sus4": [0, 5, 7],
+    "sus2": [0, 2, 7],
+    "5": [0, 7],
+    "dim": [0, 3, 6],
+    "aug": [0, 4, 8],
+    "m7b5": [0, 3, 6, 10],
+    "dim7": [0, 3, 6, 9],
+    "mMaj7": [0, 3, 7, 11],
+    "7sus4": [0, 5, 7, 10],
+    "6": [0, 4, 7, 9],
+    "m6": [0, 3, 7, 9],
+    "add9": [0, 4, 7, 14],
+    "madd9": [0, 3, 7, 14],
+    "9": [0, 4, 7, 10, 14],
+    "maj9": [0, 4, 7, 11, 14],
+    "m9": [0, 3, 7, 10, 14],
+    "11": [0, 7, 10, 14, 17],
+    "m11": [0, 3, 7, 10, 14, 17],
+    "13": [0, 4, 7, 10, 14, 21],
 }
-HARTE_QUALITY = {"maj": "maj", "min": "min", "7": "7", "maj7": "maj7", "min7": "min7", "sus4": "sus4"}
+HARTE_QUALITY = {
+    "maj": "maj", "min": "min", "7": "7", "maj7": "maj7", "min7": "min7", "sus4": "sus4", "sus2": "sus2",
+    "5": "5", "dim": "dim", "aug": "aug", "m7b5": "hdim7", "dim7": "dim7", "mMaj7": "minmaj7",
+    "7sus4": "sus4(b7)", "6": "maj6", "m6": "min6", "add9": "maj(9)", "madd9": "min(9)", "9": "9",
+    "maj9": "maj9", "m9": "min9", "11": "(1,5,b7,9,11)", "m11": "min11", "13": "7(9,13)",
+}
+_BASS_DEGREE = {3: "b3", 4: "3", 6: "b5", 7: "5", 8: "#5", 9: "6", 10: "b7", 11: "7"}
 PC_NAMES = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]
 MAJOR_SCALE = [0, 2, 4, 5, 7, 9, 11]
 MINOR_SCALE = [0, 2, 3, 5, 7, 8, 10]
@@ -144,11 +199,13 @@ def _drums(buffer: np.ndarray, beat_times: np.ndarray, beats_per_bar: int, level
         _add(buffer, time + period / 2, hat, level * 0.35)
 
 
-def make_song(seed: int, duration_bars: int | None = None, modulate: bool = False) -> Song:
+def make_song(seed: int, duration_bars: int | None = None, modulate: bool = False, extended: bool = False) -> Song:
     """Build one synthetic song. Same seed, same song.
 
     With modulate=True the last third moves up 1-2 semitones (the classic pop
     "truck driver's gear change"); the reference key stays the opening key.
+    With extended=True the harmony uses sevenths, sus, add9, 6ths, 9/11/13,
+    diminished/augmented, power chords and slash chords.
     """
     rng = np.random.default_rng(seed)
     mode = "major" if rng.random() < 0.6 else "minor"
@@ -158,6 +215,12 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
     detune = float(rng.uniform(-35, 35))
     beat = 60.0 / tempo
     bank = MAJOR_PROGRESSIONS if mode == "major" else MINOR_PROGRESSIONS
+    power = False
+    if extended:
+        power = rng.random() < 0.2
+        bank = POWER_PROGRESSIONS if power else EXTENDED_MAJOR if mode == "major" else EXTENDED_MINOR
+        if power:
+            mode = "minor"
     verse, chorus = (bank[i] for i in rng.choice(len(bank), size=2, replace=False))
 
     # Chord plan in beats: mostly one chord per bar, sometimes split bars or held bars.
@@ -174,7 +237,7 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
             else:
                 length = beats_per_bar
             plan.append(((tonic + degree) % 12, quality, length))
-    plan.append((tonic, "min" if mode == "minor" else "maj", 2 * beats_per_bar))  # final tonic
+    plan.append((tonic, "5" if power else "min" if mode == "minor" else "maj", 2 * beats_per_bar))  # final tonic
     tonics = [tonic] * len(plan)
     if modulate:
         shift = int(rng.choice([1, 2]))
@@ -191,9 +254,14 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
     length_sec = beat_times[-1] + 1.5
     music = np.zeros(int(length_sec * SR))
     drums = np.zeros_like(music)
+    # Extended songs distort only the guitar/keys, as real mixes do; the
+    # original benchmark distorts the whole bus (kept for comparability).
+    harmony = np.zeros_like(music) if extended else music
 
     harmony_style = rng.choice(["strum", "arp", "pad", "piano"], size=int(rng.integers(1, 3)), replace=False)
     distortion = rng.random() < 0.25
+    if power:
+        harmony_style, distortion = np.array(["strum"]), True
     scale = MAJOR_SCALE if mode == "major" else MINOR_SCALE
     melody_note = 72 + ((tonic - 72) % 12)
     chords: list[tuple[float, float, str]] = []
@@ -204,18 +272,29 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
     plan_index = 0
     for root, quality, length in plan:
         start, end = float(beat_times[cursor]), float(beat_times[cursor + length])
-        pcs = [(root + interval) % 12 for interval in CHORD_INTERVALS[quality]]
-        inversion = rng.random() < 0.1 and quality in ("maj", "min")
-        bass_pc = pcs[1] if inversion else root
-        label = f"{PC_NAMES[root]}:{HARTE_QUALITY[quality]}" + ("/3" if inversion and quality == "maj" else "/b3" if inversion else "")
+        intervals = CHORD_INTERVALS[quality]
+        pcs = [(root + interval) % 12 for interval in intervals]
+        if extended:
+            bass_options = [i for i in intervals if i in _BASS_DEGREE]
+            bass_interval = int(rng.choice(bass_options)) if bass_options and quality != "5" and rng.random() < 0.15 else 0
+            bass_pc = (root + bass_interval) % 12
+            label = f"{PC_NAMES[root]}:{HARTE_QUALITY[quality]}" + (f"/{_BASS_DEGREE[bass_interval]}" if bass_interval else "")
+            voiced = [pc for pc, i in zip(pcs, intervals) if not (len(intervals) >= 5 and i == 7 and rng.random() < 0.5)]
+            voicing = _voicing(voiced, rng)
+            if quality == "5":
+                voicing = sorted({voicing[0], voicing[0] + 7, voicing[0] + 12})
+        else:
+            inversion = rng.random() < 0.1 and quality in ("maj", "min")
+            bass_pc = pcs[1] if inversion else root
+            label = f"{PC_NAMES[root]}:{HARTE_QUALITY[quality]}" + ("/3" if inversion and quality == "maj" else "/b3" if inversion else "")
+            voicing = _voicing(pcs, rng)
         chords.append((start, end, label))
-        voicing = _voicing(pcs, rng)
 
         for style in harmony_style:
             if style == "pad":
                 for note in voicing:
                     tone = _tone(_midi_hz(note, detune), end - start + 0.05, rng, _partials(rng, 8, 1.0), 0, attack=0.08, sustain=True)
-                    _add(music, start, tone, 0.12)
+                    _add(harmony, start, tone, 0.12)
                 continue
             for step in range(length * 2):
                 time = start + step * beat / 2
@@ -223,15 +302,15 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
                 if style == "strum" and (on_beat or rng.random() < 0.4):
                     for string, note in enumerate(voicing if rng.random() < 0.5 else voicing[::-1]):
                         tone = _tone(_midi_hz(note, detune), 1.2, rng, _partials(rng, 12, 1.2), 3.5, inharmonicity=1e-4)
-                        _add(music, time + string * rng.uniform(0.006, 0.014), tone, 0.16 if on_beat else 0.09)
+                        _add(harmony, time + string * rng.uniform(0.006, 0.014), tone, 0.16 if on_beat else 0.09)
                 elif style == "arp":
                     note = voicing[step % len(voicing)] + (12 if step % 4 == 3 else 0)
                     tone = _tone(_midi_hz(note, detune), 0.8, rng, _partials(rng, 10, 1.4), 4.5, inharmonicity=1e-4)
-                    _add(music, time, tone, 0.22)
+                    _add(harmony, time, tone, 0.22)
                 elif style == "piano" and step % beats_per_bar == 0:
                     for note in voicing:
                         tone = _tone(_midi_hz(note, detune), 1.8, rng, _partials(rng, 14, 1.6), 1.8, inharmonicity=3e-4)
-                        _add(music, time, tone, 0.15)
+                        _add(harmony, time, tone, 0.15)
 
         # Bass: root (or inversion) on the downbeat, fifth or root mid-bar,
         # and a scale-step approach note into the next chord now and then.
@@ -241,7 +320,11 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
             if offset % beats_per_bar == 0:
                 note = bass_base
             elif offset % beats_per_bar == 2 and beats_per_bar == 4:
-                note = bass_base + 7 if rng.random() < 0.5 else bass_base
+                if extended:
+                    fifth = next((i for i in intervals if i in (6, 7, 8)), 0)
+                    note = 36 + ((root + fifth - 36) % 12) if rng.random() < 0.5 else bass_base
+                else:
+                    note = bass_base + 7 if rng.random() < 0.5 else bass_base
             elif offset == length - 1 and rng.random() < 0.3 and plan_index + 1 < len(plan):
                 next_root = plan[plan_index + 1][0]
                 note = 36 + ((next_root - 36) % 12) + (1 if rng.random() < 0.5 else -2)
@@ -267,7 +350,9 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
         cursor += length
         plan_index += 1
 
-    if distortion:
+    if extended:
+        music = music + (np.tanh(3.0 * harmony) / 3.0 if distortion else harmony)
+    elif distortion:
         music = np.tanh(3.0 * music) / 3.0
     _drums(drums, beat_times[:-1], beats_per_bar, float(rng.uniform(0.25, 0.6)), rng)
     mix = music + drums
@@ -281,6 +366,6 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
 
     description = (
         f"{PC_NAMES[tonic]} {mode}, {tempo:.0f} BPM, {beats_per_bar}/4, detune {detune:+.0f}c, "
-        f"{'+'.join(harmony_style)}{', distorted' if distortion else ''}{', modulates' if modulate else ''}"
+        f"{'+'.join(harmony_style)}{', distorted' if distortion else ''}{', modulates' if modulate else ''}{', power chords' if power else ', extended' if extended else ''}"
     )
     return Song(mix.astype(np.float32), SR, (tonic, mode), tempo, beats_per_bar, detune, chords, description)

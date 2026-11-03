@@ -2,6 +2,7 @@
 
 Synthetic benchmark (fast regression signal):
     python -m server.benchmark.run --songs 40
+    python -m server.benchmark.run --songs 40 --seed 400 --extended   # rich chords
 
 Real recordings (the number that matters): put `song.wav` next to a Harte
 `.lab` file (`start end label` per line, e.g. `12.40 14.95 A:min7`) and an
@@ -39,10 +40,10 @@ def _score(name, reference, ref_key, result, elapsed, meta=""):
 
 
 def _synthetic_case(job):
-    seed, analyzer_spec, modulate = job
+    seed, analyzer_spec, modulate, extended = job
     from server.benchmark.synth import PC_NAMES, make_song
 
-    song = make_song(seed, modulate=modulate)
+    song = make_song(seed, modulate=modulate, extended=extended)
     analyzer = load_analyzer(analyzer_spec)
     started = time.perf_counter()
     result = analyzer(song.audio, song.sr)
@@ -80,6 +81,7 @@ def main() -> None:
     parser.add_argument("--dataset", type=Path, help="folder of .wav/.mp3 files with matching .lab (and optional .key)")
     parser.add_argument("--analyzer", default="server.analysis:analyze_audio", help="module:function(y, sr) -> result")
     parser.add_argument("--modulate", action="store_true", help="synthetic songs change key for the last third")
+    parser.add_argument("--extended", action="store_true", help="synthetic songs use sevenths, sus, add9, 9/11/13, dim, aug, power and slash chords")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--verbose", action="store_true", help="print every song")
     args = parser.parse_args()
@@ -88,18 +90,18 @@ def main() -> None:
         audio = sorted(p for p in args.dataset.iterdir() if p.suffix in {".wav", ".mp3", ".flac", ".m4a"} and p.with_suffix(".lab").exists())
         jobs, worker = [(path, args.analyzer) for path in audio], _file_case
     else:
-        jobs, worker = [(seed, args.analyzer, args.modulate) for seed in range(args.seed, args.seed + args.songs)], _synthetic_case
+        jobs, worker = [(seed, args.analyzer, args.modulate, args.extended) for seed in range(args.seed, args.seed + args.songs)], _synthetic_case
 
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         rows = list(pool.map(worker, jobs))
 
     for row in rows:
         if args.verbose or row["majmin"] < 0.7 or row["key"] < 1:
-            print(f"{row['name']:>10}  majmin {row['majmin']:.3f}  root {row['root']:.3f}  seg {row['seg']:.3f}  "
+            print(f"{row['name']:>10}  majmin {row['majmin']:.3f}  exact {row['exact']:.3f}  seg {row['seg']:.3f}  "
                   f"key {row['key']:.1f} ({row['est_key']})  {row['seconds']:.1f}s  {row['meta']}")
     print()
     print(f"songs        {len(rows)}")
-    for metric in ("majmin", "root", "seg", "key", "tempo", "meter"):
+    for metric in ("majmin", "root", "sevenths", "exact", "bass", "overlabel", "underlabel", "seg", "key", "tempo", "meter"):
         values = np.array([row.get(metric, np.nan) for row in rows], dtype=float)
         print(f"{metric:<12} {np.nanmean(values):.3f}")
     print(f"exact keys   {sum(row['key'] == 1 for row in rows)}/{len(rows)}")

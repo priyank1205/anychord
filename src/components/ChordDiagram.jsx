@@ -28,7 +28,8 @@ const parseChordName = (chordString) => {
   else if (suffixStr === 'sus2') suffix = 'sus2';
   else if (suffixStr === 'dim') suffix = 'dim';
   else if (suffixStr === 'aug') suffix = 'aug';
-  else if (suffixStr !== '') suffix = suffixStr;
+  else if (suffixStr === 'mMaj7') suffix = 'mmaj7';
+  else if (suffixStr !== '') suffix = suffixStr; // 7sus4, m7b5, dim7, 6, m6, add9, 9, 11, 13 ... (power chords: no diagram)
 
   return { root, suffix };
 };

@@ -5,9 +5,36 @@ import { DEMO_ARRANGEMENT } from "./data/demoArrangement";
 import { youtubeEmbedUrl, youtubeVideoId } from "./lib/trackInput";
 import ChordDiagram from "./components/ChordDiagram";
 import { playChordSound } from "./lib/audio";
-import { formatTime, keyAt, transposeChord, transposeKey } from "./lib/music";
+import { formatTime, keyAt, simplifyChord, transposeChord, transposeKey } from "./lib/music";
 
 const LOW_CONFIDENCE = 0.6;
+const DETAIL_STORAGE_KEY = "anychords.chordDetail";
+
+function readDetailPreference() {
+  try {
+    return window.localStorage.getItem(DETAIL_STORAGE_KEY) === "Simple" ? "Simple" : "Full";
+  } catch {
+    return "Full";
+  }
+}
+
+// Simple view: every chord as the triad you'd strum, with repeats merged
+// (C -> Cmaj7 -> C7 becomes one long C).
+function simplifyTimeline(events) {
+  const merged = [];
+  for (const event of events) {
+    const chord = simplifyChord(event.chord);
+    const alternative = event.alternative && simplifyChord(event.alternative) !== chord ? simplifyChord(event.alternative) : undefined;
+    const last = merged[merged.length - 1];
+    if (last && last.chord === chord) {
+      last.end = event.end;
+      last.confidence = Math.min(last.confidence ?? 1, event.confidence ?? 1);
+    } else {
+      merged.push({ ...event, chord, alternative });
+    }
+  }
+  return merged;
+}
 
 function formatConfidence(value) {
   return typeof value === "number" ? `${Math.round(value * 100)}% confident` : value;
@@ -23,6 +50,7 @@ function App() {
   const [arrangement, setArrangement] = useState(DEMO_ARRANGEMENT);
   const [transposition, setTransposition] = useState(0);
   const [instrument, setInstrument] = useState("Ukulele");
+  const [chordDetail, setChordDetail] = useState(readDetailPreference);
   const [editMode, setEditMode] = useState(false);
   const [toast, setToast] = useState("");
   const [analysisError, setAnalysisError] = useState("");
@@ -124,16 +152,31 @@ function App() {
   }, [isPlaying]);
 
   // Compute active event index
+  // Editing always works on the full chords; Simple is a reading view.
+  const simpleView = chordDetail === "Simple" && !editMode;
+  const timeline = useMemo(() => {
+    const events = (arrangement.timing ?? []).map((event, index) => ({ ...event, index }));
+    return simpleView ? simplifyTimeline(events) : events;
+  }, [arrangement.timing, simpleView]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DETAIL_STORAGE_KEY, chordDetail);
+    } catch {
+      // Storage can be unavailable (private mode); the toggle still works.
+    }
+  }, [chordDetail]);
+
   const activeEventIndex = useMemo(() => {
-    if (!arrangement.timing || currentTime === null) return -1;
-    for (let i = 0; i < arrangement.timing.length; i++) {
-      const event = arrangement.timing[i];
+    if (!timeline.length || currentTime === null) return -1;
+    for (let i = 0; i < timeline.length; i++) {
+      const event = timeline[i];
       if (currentTime >= event.start && currentTime < event.end) {
         return i;
       }
     }
     return -1;
-  }, [arrangement.timing, currentTime]);
+  }, [timeline, currentTime]);
 
   // Scroll active event into view
   useEffect(() => {
@@ -152,6 +195,9 @@ function App() {
   // Chords are spelled for the key they sit in, after transposition.
   const shownChord = (chord, time) => transposeChord(chord, transposition, transposeKey(keyAt(time, arrangement), transposition));
   const shownKey = transposeKey(arrangement.key, transposition);
+  const progressionParts = (arrangement.progression ? arrangement.progression.split(" ➔ ") : [])
+    .map((chord) => transposeChord(simpleView ? simplifyChord(chord) : chord, transposition, shownKey))
+    .filter((chord, i, parts) => i === 0 || chord !== parts[i - 1]);
   const confidenceValue = typeof arrangement.confidence === "number" ? arrangement.confidence : null;
 
   function showToast(message) {
@@ -185,9 +231,7 @@ function App() {
   }
 
   function copyChart() {
-    const body = arrangement.timing
-      ? arrangement.timing.map((event) => shownChord(event.chord, event.start)).join("  |  ")
-      : "";
+    const body = timeline.map((event) => shownChord(event.chord, event.start)).join("  |  ");
     if (!navigator.clipboard) {
       showToast("Select and copy the chart from the screen");
       return;
@@ -323,10 +367,25 @@ function App() {
 
           <article className="chart-panel">
             <div className="chart-toolbar">
-              <div className="instrument-switch" role="group" aria-label="Instrument">
-                {["Ukulele", "Piano"].map((name) => (
-                  <button key={name} type="button" className={instrument === name ? "active" : ""} onClick={() => setInstrument(name)}>{name}</button>
-                ))}
+              <div className="toolbar-switches">
+                <div className="instrument-switch" role="group" aria-label="Instrument">
+                  {["Ukulele", "Piano"].map((name) => (
+                    <button key={name} type="button" className={instrument === name ? "active" : ""} onClick={() => setInstrument(name)}>{name}</button>
+                  ))}
+                </div>
+                <div className="instrument-switch" role="group" aria-label="Chord detail">
+                  {["Full", "Simple"].map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      className={chordDetail === name ? "active" : ""}
+                      onClick={() => setChordDetail(name)}
+                      title={name === "Full" ? "Every chord as heard: 7ths, sus, add9, slash chords…" : "Plain triads for strumming along"}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="toolbar-actions">
                 <button type="button" className="icon-button" onClick={() => setTransposition((value) => value - 1)} aria-label="Transpose down"><Icon>♭</Icon></button>
@@ -338,14 +397,14 @@ function App() {
               </div>
             </div>
             
-            {arrangement.progression && (
+            {progressionParts.length > 1 && (
               <div className="core-progression-bar">
                 <span className="progression-label"><Icon>✦</Icon> Repeating Pattern:</span>
                 <strong className="progression-sequence">
-                  {arrangement.progression.split(" ➔ ").map((chord, i) => (
+                  {progressionParts.map((chord, i) => (
                     <span key={i} className="progression-chord">
-                      {chord.split(" ").map((part) => transposeChord(part, transposition, shownKey)).join(" ")}
-                      {i < arrangement.progression.split(" ➔ ").length - 1 && <span className="progression-arrow"> ➔ </span>}
+                      {chord}
+                      {i < progressionParts.length - 1 && <span className="progression-arrow"> ➔ </span>}
                     </span>
                   ))}
                 </strong>
@@ -365,7 +424,7 @@ function App() {
               <div><strong>{status === "loading" ? "Listening for chords…" : "Video connected. Ready to analyse."}</strong><p>{status === "loading" ? "Downloading temporary audio and building an automatic chord draft. Longer videos can take a little while." : "Press “Make my chart” to generate a local chord draft from this video."}</p></div>
             </div> : <div className={`chart-content ${editMode ? "editing" : ""}`}>
               <div className="chord-timeline">
-                {arrangement.timing && arrangement.timing.map((event, eventIndex) => {
+                {timeline.map((event, eventIndex) => {
                   const isActive = eventIndex === activeEventIndex;
                   const chord = shownChord(event.chord, event.start);
                   const uncertain = typeof event.confidence === "number" && event.confidence < LOW_CONFIDENCE;
@@ -373,7 +432,7 @@ function App() {
                   return (
                     <div
                       className={`chord-block ${isActive ? "active" : ""} ${uncertain ? "uncertain" : ""}`}
-                      key={eventIndex}
+                      key={`${event.index}-${event.start}`}
                       onClick={() => !editMode && playChordSound(chord, instrument)}
                       title={uncertain ? `Not sure about this one${alternative ? ` — could be ${alternative}` : ""}` : undefined}
                       style={{ cursor: editMode ? "text" : "pointer" }}
@@ -383,14 +442,14 @@ function App() {
                           <input
                             className="chord-editor"
                             value={event.chord}
-                            onChange={(e) => updateChord(eventIndex, e.target.value)}
+                            onChange={(e) => updateChord(event.index, e.target.value)}
                             aria-label="Edit chord"
                           />
                           {alternative && (
                             <button
                               type="button"
                               className="chord-alt"
-                              onClick={() => updateChord(eventIndex, event.alternative)}
+                              onClick={() => updateChord(event.index, event.alternative)}
                               aria-label={`Replace with ${alternative}`}
                             >
                               ↺ {alternative}

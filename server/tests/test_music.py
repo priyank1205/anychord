@@ -1,6 +1,6 @@
 import pytest
 
-from server.music import format_key, key_signature_names, mirex_key_score, parse_key, reduce_majmin
+from server.music import chord_label, format_key, key_signature_names, mirex_key_score, parse_chord, parse_key, reduce_majmin
 
 
 @pytest.mark.parametrize(
@@ -43,3 +43,29 @@ def test_mirex_key_score():
 )
 def test_reduce_majmin(label, expected):
     assert reduce_majmin(label) == expected
+
+
+@pytest.mark.parametrize(
+    ("label", "root", "notes", "bass"),
+    [
+        ("C:(1,5,b7,9,11)", 0, {0, 2, 5, 7, 10}, 0),
+        ("A:hdim7/b7", 9, {0, 3, 6, 10}, 10),
+        ("C:sus4(b7)", 0, {0, 5, 7, 10}, 0),
+        ("F#m7b5", 6, {0, 3, 6, 10}, 0),
+        ("D/F#", 2, {0, 4, 7}, 4),
+        ("E5", 4, {0, 7}, 0),
+        ("Bbmaj9", 10, {0, 2, 4, 7, 11}, 0),
+        ("Cø7", 0, {0, 3, 6, 10}, 0),
+    ],
+)
+def test_parse_chord(label, root, notes, bass):
+    assert parse_chord(label) == (root, frozenset(notes), bass)
+
+
+def test_chord_label_spelling():
+    names = key_signature_names(5, "major")  # F major
+    assert chord_label(10, "maj7", names) == "Bbmaj7"
+    assert chord_label(2, "", names, bass=4) == "D/F#"  # the 3rd of D is F#, even in a flat key
+    assert chord_label(6, "7", key_signature_names(11, "major"), bass=10) == "F#7/E"
+    assert chord_label(3, "", key_signature_names(10, "major"), bass=4) == "Eb/G"
+    assert chord_label(9, "m7b5", key_signature_names(7, "major")) == "Am7b5"
