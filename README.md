@@ -4,11 +4,13 @@ An AI-powered web application that automatically generates playable, timeline-sy
 
 ## About
 
-AnyChords bridges the gap between listening and playing. Simply paste a YouTube video link, and the local Python/FastAPI backend will extract the audio and use `librosa` to analyze the track. It automatically detects the tempo, estimates the key, and generates a precise, beat-level chord timeline. The React frontend presents a beautiful, continuous chord flow that highlights perfectly in sync with the video playback. 
+AnyChords bridges the gap between listening and playing. Simply paste a YouTube video link, and the local Python/FastAPI backend will extract the audio and use `librosa` to analyze the track. It automatically detects the tempo and meter, finds the key (including mid-song key changes), and generates a precise, beat-level chord timeline. The React frontend presents a beautiful, continuous chord flow that highlights perfectly in sync with the video playback. 
 
 ## Key Features
 
-- 🎸 **Automatic Chord Detection:** Local machine learning analysis converts YouTube audio into a playable chord chart.
+- 🎸 **Automatic Chord Detection:** A tuned chroma + hidden-Markov-model pipeline converts YouTube audio into a playable chord chart. It is measured against a ground-truth benchmark (see [`server/README.md`](server/README.md)).
+- 🎼 **Key Detection:** The key comes from where the music rests (tonic, cadences, final chord), not just which notes appear. Key changes are reported, and chords are spelled for their key (Bb, not A#).
+- 🎯 **Honest Confidence:** Every chord carries a confidence score. Shaky calls are underlined in the chart, and edit mode offers the analyser's second guess as a one-click fix.
 - ⏱️ **Beat-Level Sync:** A continuous, flowing chord timeline that highlights the active chord exactly as the song plays.
 - 🔁 **Pattern Recognition:** Automatically detects and extracts the core repeating chord progression (e.g. `Em ➔ C ➔ G ➔ D`).
 - 🎹 **Transposition & Instruments:** Instantly transpose the entire chart up or down by semitones, and switch instrument contexts.

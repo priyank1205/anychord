@@ -7,7 +7,9 @@
     "dev": "vite",
     "dev:analyzer": "python3 -m uvicorn server.app:app --host 127.0.0.1 --port 8000",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:analyzer": "python3 -m pytest server/tests -q",
+    "benchmark": "python3 -m server.benchmark.run"
   },
   "dependencies": {
     "@tombatossals/chords-db": "^0.5.1",

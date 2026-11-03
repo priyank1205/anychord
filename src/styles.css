@@ -284,3 +284,11 @@ button { cursor: pointer; }
 .chord-diagram svg circle[fill="black"] {
   fill: #bea5eb !important;
 }
+
+/* Analyser confidence: flag the calls worth double-checking. */
+.chord-block.uncertain strong { text-decoration: underline dotted rgba(214, 196, 245, .55); text-decoration-thickness: 2px; text-underline-offset: 7px; }
+.chord-block.uncertain:not(.active) { border-style: dashed; }
+.editing .chord-block { flex-direction: column; gap: 4px; }
+.chord-alt { padding: 2px 7px; border: 1px solid rgba(190,160,248,.28); border-radius: 999px; color: #cbb8f2; background: rgba(190,160,248,.08); font-family: "DM Mono", monospace; font-size: 10px; white-space: nowrap; cursor: pointer; }
+.chord-alt:hover { background: rgba(190,160,248,.2); color: #eee6f8; }
+.song-facts dd.key-change { margin-top: 4px; color: #a89dac; font-size: 11px; }

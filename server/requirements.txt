@@ -1,0 +1,14 @@
+# Local analyser: python3 -m pip install -r server/requirements.txt
+fastapi>=0.110
+uvicorn>=0.29
+pydantic>=2
+numpy>=1.24
+scipy>=1.10
+# librosa 1.0.0 segfaults inside its numba-compiled beat tracker (localmax)
+# on at least one setup we tested; 0.10.2-0.11.x are known good.
+librosa>=0.10.2,<1.0
+soundfile>=0.12
+
+# Tests and benchmark
+pytest>=8
+httpx>=0.27

@@ -5,43 +5,13 @@ import { DEMO_ARRANGEMENT } from "./data/demoArrangement";
 import { youtubeEmbedUrl, youtubeVideoId } from "./lib/trackInput";
 import ChordDiagram from "./components/ChordDiagram";
 import { playChordSound } from "./lib/audio";
+import { formatTime, keyAt, transposeChord, transposeKey } from "./lib/music";
 
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-const NOTE_INDEX = {
-  C: 0,
-  "B#": 0,
-  "C#": 1,
-  Db: 1,
-  D: 2,
-  "D#": 3,
-  Eb: 3,
-  E: 4,
-  Fb: 4,
-  F: 5,
-  "E#": 5,
-  "F#": 6,
-  Gb: 6,
-  G: 7,
-  "G#": 8,
-  Ab: 8,
-  A: 9,
-  "A#": 10,
-  Bb: 10,
-  B: 11,
-  Cb: 11,
-};
+const LOW_CONFIDENCE = 0.6;
 
-function transposeChord(chord, semitones) {
-  if (!semitones || chord === "—") return chord;
-
-  return chord.replace(/(^|\/)([A-G](?:#|b)?)/g, (match, prefix, root) => {
-    const index = NOTE_INDEX[root];
-    if (index === undefined) return match;
-    return `${prefix}${NOTE_NAMES[(index + semitones + 12) % 12]}`;
-  });
+function formatConfidence(value) {
+  return typeof value === "number" ? `${Math.round(value * 100)}% confident` : value;
 }
-
-
 
 function Icon({ children, className = "" }) {
   return <span className={`icon ${className}`} aria-hidden="true">{children}</span>;
@@ -179,6 +149,11 @@ function App() {
     }
   }, [activeEventIndex]);
 
+  // Chords are spelled for the key they sit in, after transposition.
+  const shownChord = (chord, time) => transposeChord(chord, transposition, transposeKey(keyAt(time, arrangement), transposition));
+  const shownKey = transposeKey(arrangement.key, transposition);
+  const confidenceValue = typeof arrangement.confidence === "number" ? arrangement.confidence : null;
+
   function showToast(message) {
     setToast(message);
     window.setTimeout(() => setToast(""), 2600);
@@ -211,7 +186,7 @@ function App() {
 
   function copyChart() {
     const body = arrangement.timing
-      ? arrangement.timing.map((event) => transposeChord(event.chord, transposition)).join("  |  ")
+      ? arrangement.timing.map((event) => shownChord(event.chord, event.start)).join("  |  ")
       : "";
     if (!navigator.clipboard) {
       showToast("Select and copy the chart from the screen");
@@ -228,7 +203,8 @@ function App() {
       ...current,
       timing: current.timing.map((event, i) => {
         if (i !== eventIndex) return event;
-        return { ...event, chord: nextChord };
+        // A hand-edited chord is no longer a guess.
+        return { ...event, chord: nextChord, confidence: 1, alternative: undefined };
       }),
     }));
   }
@@ -327,15 +303,21 @@ function App() {
             </div>
 
             <dl className="song-facts">
-              <div><dt>Key</dt><dd>{transposition === 0 ? arrangement.key : `${NOTE_NAMES[(NOTE_INDEX.C + transposition + 12) % 12]} major`}</dd></div>
+              <div>
+                <dt>Key</dt>
+                <dd>{shownKey}</dd>
+                {(arrangement.key_changes ?? []).map((change) => (
+                  <dd key={change.time} className="key-change">→ {transposeKey(change.key, transposition)} at {formatTime(change.time)}</dd>
+                ))}
+              </div>
               <div><dt>Tempo</dt><dd>{arrangement.tempo} BPM</dd></div>
               <div><dt>Meter</dt><dd>{arrangement.meter}</dd></div>
             </dl>
 
             <div className="confidence-card">
-              <div className="confidence-title"><span><Icon>✦</Icon> Chart status</span><b>{hasGeneratedChart ? arrangement.confidence : hasVideo ? "Analysing" : arrangement.confidence}</b></div>
-              <div className="confidence-track"><span /></div>
-              <p>{hasGeneratedChart ? "Generated locally from the video audio. Treat it as a first pass and edit anything that sounds wrong." : hasVideo ? "The local analyser is reading the video audio. The generated chart will appear here when it finishes." : "Editable preview chart. Paste a YouTube link to start an actual song analysis."}</p>
+              <div className="confidence-title"><span><Icon>✦</Icon> Chart status</span><b>{hasGeneratedChart ? formatConfidence(arrangement.confidence) : hasVideo ? "Analysing" : formatConfidence(arrangement.confidence)}</b></div>
+              <div className="confidence-track"><span style={confidenceValue !== null ? { width: `${Math.round(confidenceValue * 100)}%` } : undefined} /></div>
+              <p>{hasGeneratedChart ? "Generated locally from the video audio. Chords with a dotted underline are the analyser’s least certain calls — check those first." : hasVideo ? "The local analyser is reading the video audio. The generated chart will appear here when it finishes." : "Editable preview chart. Paste a YouTube link to start an actual song analysis."}</p>
             </div>
           </aside>
 
@@ -362,7 +344,7 @@ function App() {
                 <strong className="progression-sequence">
                   {arrangement.progression.split(" ➔ ").map((chord, i) => (
                     <span key={i} className="progression-chord">
-                      {chord.split(" ").map(part => transposeChord(part, transposition)).join(" ")}
+                      {chord.split(" ").map((part) => transposeChord(part, transposition, shownKey)).join(" ")}
                       {i < arrangement.progression.split(" ➔ ").length - 1 && <span className="progression-arrow"> ➔ </span>}
                     </span>
                   ))}
@@ -375,7 +357,7 @@ function App() {
                 <p className="section-kicker">{instrument === "Piano" ? "Piano chord guide · hands coming next" : "Ukulele arrangement"}</p>
                 <h3>Chord chart</h3>
               </div>
-              <div className="beat-legend"><span className="beat-fill" /> One chord per bar <span className="bar-line" /> 4/4 time</div>
+              <div className="beat-legend"><span className="beat-fill" /> Synced to the beat <span className="bar-line" /> {arrangement.meter} time</div>
             </div>
 
             {hasVideo && !hasGeneratedChart ? <div className="analysis-pending">
@@ -385,28 +367,42 @@ function App() {
               <div className="chord-timeline">
                 {arrangement.timing && arrangement.timing.map((event, eventIndex) => {
                   const isActive = eventIndex === activeEventIndex;
+                  const chord = shownChord(event.chord, event.start);
+                  const uncertain = typeof event.confidence === "number" && event.confidence < LOW_CONFIDENCE;
+                  const alternative = event.alternative ? shownChord(event.alternative, event.start) : null;
                   return (
-                    <div 
-                      className={`chord-block ${isActive ? "active" : ""}`} 
+                    <div
+                      className={`chord-block ${isActive ? "active" : ""} ${uncertain ? "uncertain" : ""}`}
                       key={eventIndex}
-                      onClick={() => !editMode && playChordSound(transposeChord(event.chord, transposition), instrument)}
-                      style={{ cursor: editMode ? 'text' : 'pointer' }}
+                      onClick={() => !editMode && playChordSound(chord, instrument)}
+                      title={uncertain ? `Not sure about this one${alternative ? ` — could be ${alternative}` : ""}` : undefined}
+                      style={{ cursor: editMode ? "text" : "pointer" }}
                     >
                       {editMode ? (
-                        <input
-                          className="chord-editor"
-                          value={event.chord}
-                          onChange={(e) => updateChord(eventIndex, e.target.value)}
-                          aria-label={`Edit chord`}
-                        />
+                        <>
+                          <input
+                            className="chord-editor"
+                            value={event.chord}
+                            onChange={(e) => updateChord(eventIndex, e.target.value)}
+                            aria-label="Edit chord"
+                          />
+                          {alternative && (
+                            <button
+                              type="button"
+                              className="chord-alt"
+                              onClick={() => updateChord(eventIndex, event.alternative)}
+                              aria-label={`Replace with ${alternative}`}
+                            >
+                              ↺ {alternative}
+                            </button>
+                          )}
+                        </>
                       ) : (
                         <>
-                          <strong className="chord-display">
-                            {transposeChord(event.chord, transposition)}
-                          </strong>
-                          {instrument === "Ukulele" && (
+                          <strong className="chord-display">{chord}</strong>
+                          {instrument === "Ukulele" && chord !== "N.C." && (
                             <div className="chord-tooltip">
-                              <ChordDiagram chordName={transposeChord(event.chord, transposition)} width={120} />
+                              <ChordDiagram chordName={chord} width={120} />
                             </div>
                           )}
                         </>
