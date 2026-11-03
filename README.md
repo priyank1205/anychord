@@ -16,6 +16,17 @@ AnyChords bridges the gap between listening and playing. Simply paste a YouTube 
 - 🎹 **Transposition & Instruments:** Instantly transpose the entire chart up or down by semitones, and switch instrument contexts.
 - ✏️ **Edit Mode:** Easily correct or fine-tune any chords in the auto-generated draft.
 
+## Run It Locally (macOS or Linux)
+
+You need [Node.js](https://nodejs.org) and Python 3.10+. On a Mac, [Homebrew](https://brew.sh) lets the setup install ffmpeg for you.
+
+```bash
+npm run setup   # once: installs everything (about a minute)
+npm start       # every time: starts the analyser and the website, opens your browser
+```
+
+Paste a YouTube link and click **Make my chart**. Press `Ctrl+C` in the terminal to stop.
+
 ## Tech Stack
 
 - **Frontend:** React, Vite, Vanilla CSS 
