@@ -9,12 +9,12 @@ AnyChords bridges the gap between listening and playing. Simply paste a YouTube 
 ## Key Features
 
 - 🎸 **Automatic Chord Detection:** A tuned chroma + hidden-Markov-model pipeline converts YouTube audio into a playable chord chart. It is measured against a ground-truth benchmark (see [`server/README.md`](server/README.md)).
-- 🎷 **Every Chord Type the Song Uses:** major, minor, 7ths (maj7, m7, dominant 7, m7b5, dim7, mMaj7), sus2/sus4/7sus4, add9, 6ths, 9/11/13, dim, aug, power chords and slash chords (D/F#). Toggle **Full** / **Simple** to show every chord or just the triad to strum, and **Steady** / **Quick changes** when a song flips chords faster than the chart shows.
+- 🎷 **Every Chord Type the Song Uses:** major, minor, 7ths (maj7, m7, dominant 7, m7b5, dim7, mMaj7), sus2/sus4/7sus4, add9, 6ths, 9/11/13, dim, aug, power chords and slash chords (D/F#). Toggle **Full** / **Simple** to show every chord or just the triad to strum, and **Steady** / **Catch fast changes** when a song flips chords faster than the chart shows. **Chords in this song** lists every chord with its shape, and a **Reset** button (or `0`) takes a transposed chart back to the original key.
 - 🎼 **Key Detection:** The key comes from where the music rests (tonic, cadences, final chord), not just which notes appear. Key changes are reported, and chords are spelled for their key (Bb, not A#).
 - 🎯 **Honest Confidence:** Every chord carries a confidence score. Shaky calls are underlined in the chart, and edit mode offers the analyser's second guess as a one-click fix.
 - ⏱️ **A Chart That Follows the Music:** Chords sit in real bars, sized by how many beats they last, so a two-beat Gm–Bb flip looks different from a whole bar of Gm. The playing chord, beat and bar light up as the video plays; tap any chord to jump there.
 - 🎧 **Practice Tools:** Now / Next with finger shapes and a beat countdown to the next change, 0.5× and 0.75× speed, loop a line, and a capo suggestion for easier open shapes. Diagrams for guitar, ukulele and piano.
-- ⌨️ **Keyboard Shortcuts:** `Space` play/pause, `←` `→` previous/next chord, `L` loop, `S` simple chords, `E` edit, `−` `+` transpose.
+- ⌨️ **Keyboard Shortcuts:** `Space` play/pause, `←` `→` previous/next chord, `L` loop, `S` simple chords, `E` edit, `−` `+` transpose, `0` original key.
 - 🔁 **Pattern Recognition:** Automatically detects and extracts the core repeating chord progression (e.g. `Em ➔ C ➔ G ➔ D`).
 - 🎹 **Transposition & Capo:** Transpose the whole chart by semitones, or set a capo and see the shapes to play.
 - ✏️ **Edit Mode:** Fix any chord by hand, with the analyser's second guess one tap away. Copy the chart as text, bar by bar.

@@ -910,8 +910,14 @@ kbd {
   font-weight: 600;
   white-space: nowrap;
 }
-.stepper__value:not(:disabled):hover {
-  background: var(--surface);
+.key-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.key-control__reset {
+  height: 36px;
+  animation: fade 0.15s ease-out;
 }
 .stepper__value em {
   font-style: normal;
@@ -988,6 +994,149 @@ kbd {
   color: var(--accent-text);
   font-size: 14px;
   font-weight: 500;
+}
+
+/* ---- Chords in this song ------------------------------------------------------- */
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.sheet__head h2 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+.sheet__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 2px;
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.sheet__toggle:hover {
+  color: var(--accent-text);
+}
+.sheet__total {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.sheet__chevron {
+  color: var(--text-3);
+  transition: transform 0.2s var(--ease);
+}
+.sheet__toggle[aria-expanded="false"] .sheet__chevron {
+  transform: rotate(-90deg);
+}
+.sheet__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sheet--piano .sheet__grid {
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+}
+.sheet__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 10px 8px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  transition:
+    border-color 0.2s,
+    background 0.2s,
+    box-shadow 0.2s;
+}
+.sheet__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 28px;
+  font-size: 19px;
+}
+.sheet__top .chord-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sheet__card--long .sheet__top {
+  font-size: 15.5px;
+}
+.sheet__top .hear-btn {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--text-3);
+}
+.sheet__top .hear-btn:hover {
+  color: var(--accent-text);
+}
+.sheet__card .diagram {
+  margin-top: 2px;
+}
+.sheet__card .diagram--missing {
+  min-height: 96px;
+  font-size: 11.5px;
+}
+.sheet__count {
+  align-self: flex-end;
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+/* Shapes stay neutral; only the chord playing now turns amber. */
+.sheet__card .diagram__dot,
+.sheet__card .piano__key--on {
+  fill: var(--next-dot);
+}
+.sheet__card .diagram__finger {
+  fill: var(--bg);
+}
+.sheet__card .piano__key--on {
+  fill: var(--next-key);
+}
+.sheet__card.is-active {
+  border-color: var(--accent-line);
+  background: linear-gradient(180deg, var(--accent-soft), transparent 75%), var(--bg-raised);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.sheet__card.is-active .diagram__dot,
+.sheet__card.is-active .piano__key--on {
+  fill: var(--accent);
+}
+.sheet__card.is-active .diagram__finger {
+  fill: var(--accent-ink);
+}
+.sheet__card.is-active .sheet__top .chord-name {
+  color: var(--accent-text);
 }
 
 /* ---- Chord grid -------------------------------------------------------------- */
@@ -1903,6 +2052,32 @@ button.seg.is-active:hover {
   }
   .capo select {
     flex: 1;
+  }
+  .toolbar__group--detail {
+    order: 1;
+  }
+  .toolbar__group--capo {
+    order: 2;
+  }
+  .toolbar__group--key {
+    order: 3;
+    grid-column: 1 / -1;
+  }
+  .toolbar__group--changes {
+    order: 4;
+    grid-column: 1 / -1;
+  }
+  .toolbar:not(:has(.toolbar__group--capo)) .toolbar__group--detail {
+    grid-column: 1 / -1;
+  }
+  .key-control .stepper {
+    flex: 1;
+  }
+  .sheet__grid {
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  }
+  .sheet--piano .sheet__grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   }
 
   .grid__row {

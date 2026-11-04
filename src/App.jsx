@@ -3,6 +3,7 @@ import AnalysisProgress from "./components/AnalysisProgress";
 import ChordEditor from "./components/ChordEditor";
 import ChordGrid from "./components/ChordGrid";
 import ChordName from "./components/ChordName";
+import ChordSheet from "./components/ChordSheet";
 import Icon from "./components/Icon";
 import Landing, { LinkForm } from "./components/Landing";
 import PlayerPanel from "./components/PlayerPanel";
@@ -55,6 +56,7 @@ export default function App() {
   const [analyzer, setAnalyzer] = useState(null);
   const [instrument, setInstrument] = useStoredState("anychords.instrument-choice", "ukulele", INSTRUMENTS);
   const [detail, setDetail] = useStoredState("anychords.detail", "full", ["full", "simple"]);
+  const [sheetState, setSheetState] = useStoredState("anychords.sheet", "open", ["open", "closed"]);
   const [sensitivity, setSensitivity] = useState("normal");
   const [recharting, setRecharting] = useState(false);
   const [transposition, setTransposition] = useState(0);
@@ -145,7 +147,7 @@ export default function App() {
     setRecharting(true);
     try {
       setArrangement(await requestChart(link, mode));
-      showToast(mode === "sensitive" ? "Showing quick chord changes" : "Showing steady chord changes");
+      showToast(mode === "sensitive" ? "Catching fast chord changes" : "Showing steady chord changes");
     } catch (error) {
       setSensitivity(sensitivity);
       showToast(error.message, "warn");
@@ -177,6 +179,21 @@ export default function App() {
     [simpleView, offset, arrangement],
   );
   const shownKey = arrangement ? transposeKey(arrangement.key, transposition) : "";
+
+  // Every chord in the song as shown (transposed, capo, simple), in the order
+  // it first appears, with how often it is played.
+  const songChords = useMemo(() => {
+    const seen = new Map();
+    for (const event of events) {
+      if (event.chord === "N.C.") continue;
+      const name = display(event.chord, event.start);
+      const entry = seen.get(name) ?? { name, count: 0 };
+      entry.count += 1;
+      seen.set(name, entry);
+    }
+    return [...seen.values()];
+  }, [events, display]);
+  const hear = useCallback((chord) => import("./lib/audio").then((audio) => audio.playChordSound(chord, instrument)), [instrument]);
   const shapesKey = arrangement && capoUsed ? transposeKey(arrangement.key, offset) : null;
   const capoHint = useMemo(
     () => (arrangement && instrument === "guitar" ? suggestCapo(arrangement.timing, transposeKey(arrangement.key, transposition)).capo : 0),
@@ -314,6 +331,7 @@ export default function App() {
         ArrowRight: () => stepChord(1),
         "-": () => setTransposition((value) => value - 1),
         "=": () => setTransposition((value) => value + 1),
+        0: () => setTransposition(0),
         "+": () => setTransposition((value) => value + 1),
         s: () => setDetail((value) => (value === "simple" ? "full" : "simple")),
         e: () => setEditMode((value) => !value),
@@ -398,7 +416,7 @@ export default function App() {
               onPrev={() => stepChord(-1)}
               onNext={() => stepChord(1)}
               onToggleLoop={toggleLoop}
-              onHear={(chord) => import("./lib/audio").then((audio) => audio.playChordSound(chord, instrument))}
+              onHear={hear}
             />
           </aside>
 
@@ -476,7 +494,8 @@ export default function App() {
               <div className="notice">
                 <Icon name="sparkle" size={18} />
                 <span>
-                  <strong>Quick changes</strong> finds {arrangement.quick_changes_hint} more chord changes in this song.
+                  <strong>Catch fast changes</strong> finds {arrangement.quick_changes_hint} more chord changes in this song, ones that last
+                  only a beat or two.
                 </span>
                 <button type="button" className="ghost-btn" onClick={() => changeSensitivity("sensitive")} disabled={recharting}>
                   Show them <Icon name="arrow" size={16} />
@@ -492,6 +511,7 @@ export default function App() {
                 transposition={transposition}
                 onTranspose={setTransposition}
                 shownKey={shownKey || "Key"}
+                originalKey={arrangement.key}
                 capo={capo}
                 onCapo={setCapo}
                 suggestedCapo={capoHint}
@@ -512,6 +532,18 @@ export default function App() {
                   ))}
                 </ol>
               </div>
+            )}
+
+            {phase === "ready" && songChords.length > 0 && (
+              <ChordSheet
+                chords={songChords}
+                active={started && now ? display(now.chord, now.start) : null}
+                instrument={instrument}
+                onInstrument={setInstrument}
+                open={sheetState === "open"}
+                onToggle={() => setSheetState(sheetState === "open" ? "closed" : "open")}
+                onHear={hear}
+              />
             )}
 
             {editMode && (
@@ -542,13 +574,13 @@ export default function App() {
             {phase === "ready" && (
               <footer className="song__footer">
                 <span>
-                  {sensitivity === "sensitive" ? "Quick changes" : "Steady"} · analyser {arrangement.analyzer_version ?? "unknown"}
+                  {sensitivity === "sensitive" ? "Catching fast changes" : "Steady"} · analyser {arrangement.analyzer_version ?? "unknown"}
                 </span>
                 <span className="shortcuts" aria-label="Keyboard shortcuts">
                   <Icon name="keyboard" size={16} />
                   <kbd>Space</kbd> play <kbd>←</kbd>
                   <kbd>→</kbd> chords <kbd>L</kbd> loop <kbd>S</kbd> simple <kbd>E</kbd> edit <kbd>−</kbd>
-                  <kbd>+</kbd> key
+                  <kbd>+</kbd> key <kbd>0</kbd> reset key
                 </span>
               </footer>
             )}

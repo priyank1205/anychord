@@ -58,7 +58,7 @@ def main() -> None:
     parser.add_argument("source", help="YouTube link or audio file")
     parser.add_argument("--from", dest="start", default="0", help="start time, e.g. 0:10 (default 0)")
     parser.add_argument("--to", dest="end", default=None, help="end time, e.g. 0:30 (default: start + 30 s)")
-    parser.add_argument("--sensitive", action="store_true", help='use the "more quick changes" setting')
+    parser.add_argument("--sensitive", action="store_true", help='use the "Catch fast changes" setting')
     args = parser.parse_args()
     start = parse_time(args.start)
     end = parse_time(args.end) if args.end else start + 30

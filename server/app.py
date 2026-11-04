@@ -77,7 +77,7 @@ class AnalyzeRequest(BaseModel):
     sensitivity: Literal["normal", "sensitive"] = "normal"
 
 
-# Recently analysed videos: switching "quick changes" on re-charts from these
+# Recently analysed videos: switching "Catch fast changes" on re-charts from these
 # features in a second or two instead of downloading the audio again.
 _FEATURE_CACHE: OrderedDict[str, tuple[Features, dict]] = OrderedDict()
 _FEATURE_CACHE_SIZE = 4
@@ -171,7 +171,7 @@ def analyze(request: AnalyzeRequest):
     try:
         features, metadata = _features_for(request.youtube_url)
         result = analyze_features(features, params_for(request.sensitivity))
-        # How many more chord changes "Quick changes" would show for this song,
+        # How many more chord changes "Catch fast changes" would show for this song,
         # so the page can suggest it where it matters (decoding is ~1-2 s).
         hint = 0
         if request.sensitivity == "normal":

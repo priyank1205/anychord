@@ -36,6 +36,8 @@ const PATHS = {
     </>
   ),
   minus: <path d="M6 12h12" />,
+  reset: <path d="M4.5 12a7.5 7.5 0 1 0 2.4-5.5L4.5 8.8M4.5 4.2v4.6h4.6" />,
+  chevron: <path d="m6 9 6 6 6-6" />,
   plus: <path d="M12 6v12M6 12h12" />,
   more: (
     <>

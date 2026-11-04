@@ -8,6 +8,7 @@ export default function Toolbar({
   transposition,
   onTranspose,
   shownKey,
+  originalKey,
   capo,
   onCapo,
   suggestedCapo,
@@ -17,7 +18,7 @@ export default function Toolbar({
 }) {
   return (
     <div className="toolbar" role="toolbar" aria-label="Chart settings">
-      <div className="toolbar__group">
+      <div className="toolbar__group toolbar__group--detail">
         <span className="toolbar__label">Chords</span>
         <Segmented
           label="Chord detail"
@@ -30,40 +31,48 @@ export default function Toolbar({
         />
       </div>
 
-      <div className="toolbar__group">
+      <div className="toolbar__group toolbar__group--key">
         <span className="toolbar__label">Key</span>
-        <div className="stepper" role="group" aria-label="Transpose">
-          <button
-            type="button"
-            onClick={() => onTranspose(transposition - 1)}
-            aria-label="Transpose down a semitone"
-            title="Down a semitone (−)"
-          >
-            <Icon name="minus" size={16} />
-          </button>
-          <button
-            type="button"
-            className="stepper__value"
-            onClick={() => onTranspose(0)}
-            disabled={transposition === 0}
-            title={transposition === 0 ? "Original key" : "Back to the original key"}
-          >
-            {shownKey}
-            {transposition !== 0 && <em>{transposition > 0 ? `+${transposition}` : transposition}</em>}
-          </button>
-          <button
-            type="button"
-            onClick={() => onTranspose(transposition + 1)}
-            aria-label="Transpose up a semitone"
-            title="Up a semitone (+)"
-          >
-            <Icon name="plus" size={16} />
-          </button>
+        <div className="key-control">
+          <div className="stepper" role="group" aria-label="Transpose">
+            <button
+              type="button"
+              onClick={() => onTranspose(transposition - 1)}
+              aria-label="Transpose down a semitone"
+              title="Down a semitone (−)"
+            >
+              <Icon name="minus" size={16} />
+            </button>
+            <span className="stepper__value" aria-live="polite">
+              {shownKey}
+              {transposition !== 0 && <em>{transposition > 0 ? `+${transposition}` : transposition}</em>}
+            </span>
+            <button
+              type="button"
+              onClick={() => onTranspose(transposition + 1)}
+              aria-label="Transpose up a semitone"
+              title="Up a semitone (+)"
+            >
+              <Icon name="plus" size={16} />
+            </button>
+          </div>
+          {transposition !== 0 && (
+            <button
+              type="button"
+              className="ghost-btn key-control__reset"
+              onClick={() => onTranspose(0)}
+              aria-label={`Reset to the original key, ${originalKey}`}
+              title={`Back to ${originalKey} (0)`}
+            >
+              <Icon name="reset" size={15} />
+              <span>Reset</span>
+            </button>
+          )}
         </div>
       </div>
 
       {instrument === "guitar" && (
-        <div className="toolbar__group">
+        <div className="toolbar__group toolbar__group--capo">
           <span className="toolbar__label">Capo</span>
           <div className="capo">
             <select value={capo} onChange={(event) => onCapo(Number(event.target.value))} aria-label="Capo fret">
@@ -87,7 +96,7 @@ export default function Toolbar({
         </div>
       )}
 
-      <div className="toolbar__group">
+      <div className="toolbar__group toolbar__group--changes">
         <span className="toolbar__label">Chord changes</span>
         <Segmented
           label="Chord changes"
@@ -96,7 +105,11 @@ export default function Toolbar({
           disabled={recharting}
           options={[
             ["normal", "Steady", "Fewer, steadier changes. Best for most songs."],
-            ["sensitive", recharting ? "Updating…" : "Quick", "Catches fast changes like Gm–Bb every two beats; may add a few extra."],
+            [
+              "sensitive",
+              recharting ? "Updating…" : "Catch fast changes",
+              "Also finds chords that last only a beat or two, like Gm–B♭ flips. May add a few extras.",
+            ],
           ]}
         />
       </div>

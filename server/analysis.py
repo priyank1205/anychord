@@ -951,7 +951,7 @@ def analyze_features(features: Features, params: Params | None = None, trace: di
     }
 
 
-# "Quick changes": trust a moving bass more, including a bass on the chord's
+# "Catch fast changes": trust a moving bass more, including a bass on the chord's
 # 3rd or 5th (Bb/F), make weak-beat changes cheaper, and keep the detail pass
 # on the first pass's roots. Catches passages like Gm | Bb/F | Gm | Bb/F with
 # a G held over the Bb (every two-beat rendition in the tests; the steady
