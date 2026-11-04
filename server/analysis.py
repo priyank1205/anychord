@@ -108,6 +108,7 @@ class Params:
     entry_penalty: tuple = (0.0, 1.0, 2.0, 3.0, 4.0)  # one-off cost of starting such a chord
     same_root_change: float = 0.5  # share of chord changes that keep the root (C -> Cmaj7)
     first_pass_change: float = 0.9  # detail pass: chance of changing chord where the first pass did
+    follow_bonus: float = 0.0  # ... and extra pull towards the first pass's new root there
     same_root_at_change: float = 0.1  # ... and of keeping the root there anyway
     slash_root_level: float = 0.6  # an inversion's root must be this quiet in the bass, relative to the bass note
     detail: bool = True  # False: major/minor triads only
@@ -713,6 +714,13 @@ def refine_chords(features: Features, path: np.ndarray, posterior: np.ndarray, b
     transitions = _detail_transitions(params)
     classes = beat_classes.copy()
     classes[1:][path[1:] != path[:-1]] = N_CLASSES  # first-pass chord changes
+    # Where the first pass moves to a new root, steer the detail pass onto it:
+    # spreading the change over all 264 chords made "stay on Gm(7)" cheaper
+    # than "move to Bb" even when the first pass had clearly heard the Bb.
+    for t in range(1, len(path)):
+        if N_STATE not in (path[t], path[t - 1]) and path[t] // 2 != path[t - 1] // 2:
+            root = path[t] // 2
+            entry_bonus[root * _Q : (root + 1) * _Q, t] += params.follow_bonus
     detail = np.full(len(path), -1)
     voiced = path != N_STATE
     start = 0
@@ -938,12 +946,22 @@ def analyze_features(features: Features, params: Params | None = None, trace: di
     }
 
 
-# "More quick changes": trust a moving bass more, including a bass on the
-# chord's 3rd or 5th (Bb/F), and make weak-beat changes cheaper. Catches
-# passages like Gm | Bb/F | Gm | Bb/F with a note held over the change
-# (blended into "Gm7" in 22 of 22 test renditions before, 7 after), at the
-# price of a few extra changes on ordinary songs, hence opt-in.
-SENSITIVE = {"inversion_bass_weight": 4.0, "inversion_share": 0.8, "bass_onset_bonus": 3.0, "change_offbeat": 0.35}
+# "Quick changes": trust a moving bass more, including a bass on the chord's
+# 3rd or 5th (Bb/F), make weak-beat changes cheaper, and keep the detail pass
+# on the first pass's roots. Catches passages like Gm | Bb/F | Gm | Bb/F with
+# a G held over the Bb (every two-beat rendition in the tests; the steady
+# setting blends them into "Gm7"), at the price of a few extra changes on
+# ordinary songs, hence opt-in.
+SENSITIVE = {
+    "inversion_bass_weight": 4.0,
+    "inversion_share": 0.8,
+    "bass_onset_bonus": 3.0,
+    "change_offbeat": 0.35,
+    # The detail pass then follows the first pass onto the new root; without
+    # this, a G held over Bb/F re-merged Gm | Bb/F into "Gm7" (the real song).
+    "first_pass_change": 0.95,
+    "follow_bonus": 4.0,
+}
 SENSITIVITIES = ("normal", "sensitive")
 
 

@@ -5,10 +5,10 @@
 
 Each line is one frame (| = on the beat, . = between beats):
 
-    0:12.43 |  Gm7      first pass  Gm 82%  Bb 15%     notes  G 1.00 D .85 Bb .70 F .55   bass  G 1.00 Bb .40
+    0:12.43 |  Gm7      first pass Gm  | Gm 82%  Bb 15%     notes  G 1.00 D .85 Bb .70 F .55   bass  G 1.00 Bb .40
 
 - chart: the chord the chart shows there
-- first pass: the analyser's major/minor reading and how sure it is
+- first pass: the analyser's major/minor decision, then its top guesses and how sure it is
 - notes: the loudest pitch classes, relative to the loudest (1.00)
 - bass: the loudest bass notes, same scale
 
@@ -83,6 +83,7 @@ def main() -> None:
     ))
     print()
     posterior = trace["posterior"]
+    path = trace["first_pass"]
     for index in range(len(features.boundaries) - 1):
         t0, t1 = features.boundaries[index], features.boundaries[index + 1]
         if t1 <= start or t0 >= end:
@@ -94,7 +95,7 @@ def main() -> None:
         bass = features.detail_bass[:, index]
         loud = "  ".join(f"{note_names[k]:<2}{notes[k]:.2f}" for k in np.argsort(-notes)[:5])
         low = "  ".join(f"{note_names[k]:<2}{bass[k]:.2f}" for k in np.argsort(-bass)[:2])
-        print(f"{clock(t0)} {marker} {chart_at((t0 + t1) / 2):<7}  first pass {guesses:<20}  notes {loud}   bass {low}")
+        print(f"{clock(t0)} {marker} {chart_at((t0 + t1) / 2):<7}  first pass {first_pass_name[path[index]]:<4}| {guesses:<20}  notes {loud}   bass {low}")
 
 
 if __name__ == "__main__":

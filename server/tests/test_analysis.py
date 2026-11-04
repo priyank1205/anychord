@@ -205,7 +205,7 @@ def test_chart_keeps_the_first_pass_chord_changes():
     assert len(kept) >= 0.85 * len(root_changes)
 
 
-def _held_note_turnaround(tempo=94, seed=1):
+def _held_note_turnaround(tempo=94, seed=1, held_gain=0.2):
     """Re-created from a real recording (inspect output of Andy Shauf's "Satan"):
     F | C/G | Gm  Bb/F  Gm  Bb/F | F, two beats each in the turnaround, the bass
     walking G..A F..E, and a G held on top across the Bb."""
@@ -219,17 +219,18 @@ def _held_note_turnaround(tempo=94, seed=1):
     chords.append(("F:maj", 4))
     bass.append(("F", 4))
     held.append((None, 4))
-    return render_progression(chords, tempo, bass, held, seed=seed)
+    return render_progression(chords, tempo, bass, held, seed=seed, held_gain=held_gain)
 
 
-def test_quick_changes_mode_separates_a_held_note_turnaround():
+@pytest.mark.parametrize(("tempo", "held_gain"), [(94, 0.2), (94, 0.45), (108, 0.45)])
+def test_quick_changes_mode_separates_a_held_note_turnaround(tempo, held_gain):
     from server.analysis import params_for
 
-    song = _held_note_turnaround()
+    song = _held_note_turnaround(tempo, held_gain=held_gain)
     result = analyze_audio(song.audio, song.sr, params_for("sensitive"))
     chords = [event["chord"] for event in result["timing"]]
     assert not any(chord.startswith("Gm7") for chord in chords), chords
-    assert sum(chord.startswith("Bb") for chord in chords) >= 4, chords
+    assert sum(chord.startswith("Bb") for chord in chords) >= 6, chords
     assert majmin_scores(song.chords, _segments(result))["majmin"] > 0.85
 
 

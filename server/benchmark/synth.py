@@ -409,6 +409,7 @@ def render_progression(
     bass: list[tuple[str, float]],
     held: list[tuple[str | None, float]] | None = None,
     seed: int = 0,
+    held_gain: float = 0.2,
 ) -> Song:
     """Render an explicit progression, for regression tests built from real songs.
 
@@ -447,7 +448,7 @@ def render_progression(
         if note:
             midi = 67 + ((NOTE_INDEX[note] - 67) % 12)
             voice = _tone(_midi_hz(midi, 0), beats * beat, rng, _partials(rng, 6, 0.9), 0, attack=0.05, vibrato_cents=20, sustain=True)
-            _add(music, time, voice, 0.2)
+            _add(music, time, voice, held_gain)
         time += beats * beat
     drums = np.zeros_like(music)
     _drums(drums, lead_in + np.arange(int(total)) * beat, 4, 0.3, rng)
