@@ -1,6 +1,7 @@
 import ChordDiagram from "./ChordDiagram";
 import ChordName from "./ChordName";
 import Icon from "./Icon";
+import Segmented from "./Segmented";
 import { formatTime } from "../lib/music";
 
 const SPEEDS = [0.5, 0.75, 1];
@@ -27,6 +28,7 @@ export default function PlayerPanel({
   beatsToNext,
   display,
   instrument,
+  onInstrument,
   loopOn,
   timeRef,
   onPrev,
@@ -94,42 +96,64 @@ export default function PlayerPanel({
         </div>
       </div>
 
-      {!now && !next && !started ? (
-        <div className="nownext">
-          <p className="nownext__empty">Chords and finger shapes show up here once the chart is ready.</p>
+      <div className="shapes">
+        <div className="shapes__head">
+          <span className="shapes__label">Chord shapes</span>
+          <Segmented
+            label="Show chord shapes for"
+            size="small"
+            value={instrument}
+            onChange={onInstrument}
+            options={[
+              ["ukulele", "Ukulele"],
+              ["guitar", "Guitar"],
+              ["piano", "Piano"],
+            ]}
+          />
         </div>
-      ) : (
-        <div className="nownext">
-          <div className="nownext__now">
-            <div className="nownext__label">
-              Now
-              {nowChord && nowChord !== "N.C." && (
-                <button type="button" className="hear-btn" onClick={() => onHear(nowChord)} aria-label={`Hear ${nowChord}`} title="Hear it">
-                  <Icon name="sound" size={16} />
-                </button>
+        {!now && !next && !started ? (
+          <div className="nownext">
+            <p className="nownext__empty">Chords and finger shapes show up here once the chart is ready.</p>
+          </div>
+        ) : (
+          <div className="nownext">
+            <div className="nownext__now">
+              <div className="nownext__label">
+                Now
+                {nowChord && nowChord !== "N.C." && (
+                  <button
+                    type="button"
+                    className="hear-btn"
+                    onClick={() => onHear(nowChord)}
+                    aria-label={`Hear ${nowChord}`}
+                    title="Hear it"
+                  >
+                    <Icon name="sound" size={16} />
+                  </button>
+                )}
+              </div>
+              {started || nowChord ? (
+                <>
+                  <ChordName chord={nowChord ?? "N.C."} className="nownext__chord" />
+                  <ChordDiagram chord={nowChord} instrument={instrument} size={instrument === "piano" ? 168 : 112} />
+                </>
+              ) : (
+                <>
+                  <span className="nownext__chord chord-name chord-name--rest">Ready</span>
+                  <p className="nownext__ready">Press play, or tap any chord in the chart to start there.</p>
+                </>
               )}
             </div>
-            {started || nowChord ? (
-              <>
-                <ChordName chord={nowChord ?? "N.C."} className="nownext__chord" />
-                <ChordDiagram chord={nowChord} instrument={instrument} size={instrument === "piano" ? 168 : 112} />
-              </>
-            ) : (
-              <>
-                <span className="nownext__chord chord-name chord-name--rest">Ready</span>
-                <p className="nownext__ready">Press play, or tap any chord in the chart to start there.</p>
-              </>
-            )}
-          </div>
-          <div className="nownext__next">
-            <div className="nownext__label">
-              Next <Countdown beats={beatsToNext} />
+            <div className="nownext__next">
+              <div className="nownext__label">
+                Next <Countdown beats={beatsToNext} />
+              </div>
+              <ChordName chord={nextChord ?? "N.C."} className="nownext__chord nownext__chord--next" />
+              <ChordDiagram chord={nextChord} instrument={instrument} size={instrument === "piano" ? 140 : 96} />
             </div>
-            <ChordName chord={nextChord ?? "N.C."} className="nownext__chord nownext__chord--next" />
-            <ChordDiagram chord={nextChord} instrument={instrument} size={instrument === "piano" ? 140 : 96} />
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </section>
   );
 }

@@ -1,29 +1,8 @@
 import Icon from "./Icon";
-
-function Segmented({ label, value, options, onChange, disabled }) {
-  return (
-    <div className="segmented" role="radiogroup" aria-label={label}>
-      {options.map(([optionValue, optionLabel, hint]) => (
-        <button
-          key={optionValue}
-          type="button"
-          role="radio"
-          aria-checked={value === optionValue}
-          className={value === optionValue ? "is-on" : ""}
-          onClick={() => onChange(optionValue)}
-          disabled={disabled}
-          title={hint}
-        >
-          {optionLabel}
-        </button>
-      ))}
-    </div>
-  );
-}
+import Segmented from "./Segmented";
 
 export default function Toolbar({
   instrument,
-  onInstrument,
   detail,
   onDetail,
   transposition,
@@ -38,20 +17,6 @@ export default function Toolbar({
 }) {
   return (
     <div className="toolbar" role="toolbar" aria-label="Chart settings">
-      <div className="toolbar__group">
-        <span className="toolbar__label">Instrument</span>
-        <Segmented
-          label="Instrument"
-          value={instrument}
-          onChange={onInstrument}
-          options={[
-            ["guitar", "Guitar"],
-            ["ukulele", "Ukulele"],
-            ["piano", "Piano"],
-          ]}
-        />
-      </div>
-
       <div className="toolbar__group">
         <span className="toolbar__label">Chords</span>
         <Segmented

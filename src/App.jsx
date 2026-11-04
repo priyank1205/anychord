@@ -14,7 +14,7 @@ import { formatTime, keyAt, simplifyChord, suggestCapo, transposeChord, transpos
 import { youtubeVideoId } from "./lib/trackInput";
 
 const API = "http://127.0.0.1:8000";
-const INSTRUMENTS = ["guitar", "ukulele", "piano"];
+const INSTRUMENTS = ["ukulele", "guitar", "piano"];
 
 // Simple view: every chord as the triad you'd strum, repeats merged.
 function simplifyTimeline(events) {
@@ -53,7 +53,7 @@ export default function App() {
   const [arrangement, setArrangement] = useState(null);
   const [videoId, setVideoId] = useState(null);
   const [analyzer, setAnalyzer] = useState(null);
-  const [instrument, setInstrument] = useStoredState("anychords.instrument", "guitar", INSTRUMENTS);
+  const [instrument, setInstrument] = useStoredState("anychords.instrument-choice", "ukulele", INSTRUMENTS);
   const [detail, setDetail] = useStoredState("anychords.detail", "full", ["full", "simple"]);
   const [sensitivity, setSensitivity] = useState("normal");
   const [recharting, setRecharting] = useState(false);
@@ -392,6 +392,7 @@ export default function App() {
               beatsToNext={position.toNext}
               display={(chord) => display(chord, (now ?? next)?.start ?? 0)}
               instrument={instrument}
+              onInstrument={setInstrument}
               loopOn={loopRow !== null}
               timeRef={timeRef}
               onPrev={() => stepChord(-1)}
@@ -486,7 +487,6 @@ export default function App() {
             {arrangement && (
               <Toolbar
                 instrument={instrument}
-                onInstrument={setInstrument}
                 detail={detail}
                 onDetail={setDetail}
                 transposition={transposition}

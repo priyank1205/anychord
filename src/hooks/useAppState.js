@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-// State that survives reloads (per browser). Storage can be unavailable in
-// private windows, so every access is guarded.
+// State that survives reloads (per browser). Only a value the person picks is
+// saved, so a later change of default still reaches people who never chose.
+// Storage can be unavailable in private windows, so every access is guarded.
 export function useStoredState(key, initial, allowed) {
   const [value, setValue] = useState(() => {
     try {
@@ -11,14 +12,20 @@ export function useStoredState(key, initial, allowed) {
       return initial;
     }
   });
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch {
-      // Not persisted; the setting still works for this visit.
-    }
-  }, [key, value]);
-  return [value, setValue];
+  const choose = useCallback(
+    (next) =>
+      setValue((current) => {
+        const resolved = typeof next === "function" ? next(current) : next;
+        try {
+          window.localStorage.setItem(key, resolved);
+        } catch {
+          // Not persisted; the setting still works for this visit.
+        }
+        return resolved;
+      }),
+    [key],
+  );
+  return [value, choose];
 }
 
 export function useMediaQuery(query) {

@@ -1273,6 +1273,24 @@ button.seg.is-active:hover {
   margin-left: auto;
 }
 
+.shapes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.shapes__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 2px;
+}
+.shapes__label {
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .nownext {
   display: grid;
   grid-template-columns: 1.15fr 1fr;
@@ -1760,9 +1778,12 @@ button.seg.is-active:hover {
   .transport {
     grid-area: transport;
   }
-  .nownext {
+  .shapes {
     grid-area: nownext;
     height: 100%;
+  }
+  .shapes .nownext {
+    flex: 1;
   }
 
   .minibar {
@@ -1864,9 +1885,6 @@ button.seg.is-active:hover {
     gap: 12px;
     padding: 12px;
     align-items: start;
-  }
-  .toolbar__group:first-child {
-    grid-column: span 2;
   }
   .toolbar .segmented,
   .toolbar .stepper {
