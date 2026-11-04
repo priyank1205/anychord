@@ -13,8 +13,9 @@ AnyChords bridges the gap between listening and playing. Simply paste a YouTube 
 - 🎼 **Key Detection:** The key comes from where the music rests (tonic, cadences, final chord), not just which notes appear. Key changes are reported, and chords are spelled for their key (Bb, not A#).
 - 🎯 **Honest Confidence:** Every chord carries a confidence score. Shaky calls are underlined in the chart, and edit mode offers the analyser's second guess as a one-click fix.
 - ⏱️ **A Chart That Follows the Music:** Chords sit in real bars, sized by how many beats they last, so a two-beat Gm–Bb flip looks different from a whole bar of Gm. The playing chord, beat and bar light up as the video plays; tap any chord to jump there.
+- 🎯 **Focus View:** Switch **Chart → Focus** (or press `F`) for a minimal play-along screen: the chord to play now, big, with its shape, and the next chords scrolling in from the right at the song's speed. Each chord is as wide as it lasts, so the distance to the line shows when to change.
 - 🎧 **Practice Tools:** Now / Next with finger shapes and a beat countdown to the next change, 0.5× and 0.75× speed, loop a line, and a capo suggestion for easier open shapes. Diagrams for guitar, ukulele and piano.
-- ⌨️ **Keyboard Shortcuts:** `Space` play/pause, `←` `→` previous/next chord, `L` loop, `S` simple chords, `E` edit, `−` `+` transpose, `0` original key.
+- ⌨️ **Keyboard Shortcuts:** `Space` play/pause, `←` `→` previous/next chord, `L` loop, `S` simple chords, `E` edit, `−` `+` transpose, `0` original key, `F` focus view.
 - 🔁 **Pattern Recognition:** Automatically detects and extracts the core repeating chord progression (e.g. `Em ➔ C ➔ G ➔ D`).
 - 🎹 **Transposition & Capo:** Transpose the whole chart by semitones, or set a capo and see the shapes to play.
 - ✏️ **Edit Mode:** Fix any chord by hand, with the analyser's second guess one tap away. Copy the chart as text, bar by bar.

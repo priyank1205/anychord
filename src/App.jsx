@@ -4,6 +4,8 @@ import ChordEditor from "./components/ChordEditor";
 import ChordGrid from "./components/ChordGrid";
 import ChordName from "./components/ChordName";
 import ChordSheet from "./components/ChordSheet";
+import FocusStage from "./components/FocusStage";
+import Segmented from "./components/Segmented";
 import Icon from "./components/Icon";
 import Landing, { LinkForm } from "./components/Landing";
 import PlayerPanel from "./components/PlayerPanel";
@@ -70,6 +72,8 @@ export default function App() {
   const [instrument, setInstrument] = useStoredState("anychords.instrument-choice", "ukulele", INSTRUMENTS);
   const [detail, setDetail] = useStoredState("anychords.detail", "full", ["full", "simple"]);
   const [sheetState, setSheetState] = useStoredState("anychords.sheet", "open", ["open", "closed"]);
+  // Chart: the full lead sheet. Focus: just the chord now and the next few, scrolling.
+  const [view, setView] = useStoredState("anychords.view", "chart", ["chart", "focus"]);
   const [sensitivity, setSensitivity] = useState("normal");
   // The browser whose YouTube sign-in the analyser may use if YouTube blocks a download.
   const [browser, setBrowser] = useStoredState("anychords.browser", "", ["", ...SIGN_IN_BROWSERS.map(([value]) => value)]);
@@ -93,6 +97,7 @@ export default function App() {
   const barRefs = useRef({});
   const lastUserScroll = useRef(0);
   const frameRef = useRef(() => {});
+  const focusFrameRef = useRef(null);
 
   const player = useYouTubePlayer(videoId, (time) => frameRef.current(time));
 
@@ -238,6 +243,7 @@ export default function App() {
   // ---- Playback sync (runs every frame while playing) -----------------------
   frameRef.current = (time) => {
     if (timeRef.current) timeRef.current.textContent = formatTime(time);
+    focusFrameRef.current?.(time);
     if (loopRange && time >= loopRange.end - 0.04) {
       player.seek(loopRange.start);
       return;
@@ -365,6 +371,7 @@ export default function App() {
         s: () => setDetail((value) => (value === "simple" ? "full" : "simple")),
         e: () => setEditMode((value) => !value),
         l: () => toggleLoop(),
+        f: () => setView((value) => (value === "focus" ? "chart" : "focus")),
       };
       const action = actions[event.key];
       if (action) {
@@ -374,11 +381,12 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing, phase, player, stepChord, toggleLoop, setDetail]);
+  }, [editing, phase, player, stepChord, toggleLoop, setDetail, setView]);
 
   // ---- Views ---------------------------------------------------------------
   const inSong = phase === "loading" || phase === "ready" || (phase === "error" && Boolean(arrangement));
   const started = position.event >= 0;
+  const focus = view === "focus" && phase === "ready";
   const now = started ? events[position.event] : null;
   const next = started ? events[position.event + 1] : events.find((event) => event.chord !== "N.C.");
   const confidence = typeof arrangement?.confidence === "number" ? Math.round(arrangement.confidence * 100) : null;
@@ -396,7 +404,7 @@ export default function App() {
     const observer = new IntersectionObserver(([entry]) => setPlayerVisible(entry.intersectionRatio > 0.25), { threshold: [0, 0.25, 0.5] });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [inSong]);
+  }, [inSong, focus]);
 
   return (
     <div className="app">
@@ -440,7 +448,7 @@ export default function App() {
       )}
 
       {inSong && (
-        <main className="song">
+        <main className={`song ${focus ? "song--focus" : ""}`}>
           <aside className="song__side">
             <PlayerPanel
               player={player}
@@ -458,6 +466,7 @@ export default function App() {
               onNext={() => stepChord(1)}
               onToggleLoop={toggleLoop}
               onHear={hear}
+              compact={focus}
             >
               {phase === "ready" && songChords.length > 0 && (
                 <ChordSheet
@@ -472,7 +481,7 @@ export default function App() {
             </PlayerPanel>
           </aside>
 
-          <section className="song__main" aria-label="Chord chart">
+          <section className="song__main" aria-label={focus ? "Focus view" : "Chord chart"}>
             <div className="song__heading">
               <div className="song__title">
                 <p className="eyebrow">{phase === "loading" ? "Listening to the song…" : "Chord chart"}</p>
@@ -510,25 +519,39 @@ export default function App() {
               </div>
               {phase === "ready" && (
                 <div className="song__actions">
-                  <button
-                    type="button"
-                    className={`ghost-btn ${editMode ? "is-on" : ""}`}
-                    onClick={() => setEditMode(!editMode)}
-                    aria-pressed={editMode}
-                    aria-label={editMode ? "Done editing" : "Edit chords"}
-                    title="Fix chords by hand (E)"
-                  >
-                    <Icon name={editMode ? "check" : "edit"} size={16} /> <span>{editMode ? "Done" : "Edit"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost-btn"
-                    onClick={copyChart}
-                    aria-label="Copy chart as text"
-                    title="Copy the chart as text"
-                  >
-                    <Icon name="copy" size={16} /> <span>Copy</span>
-                  </button>
+                  <Segmented
+                    label="View"
+                    size="small"
+                    value={view}
+                    onChange={setView}
+                    options={[
+                      ["chart", "Chart", "The full chord chart (F)"],
+                      ["focus", "Focus", "Just the chord now and the next few, scrolling (F)"],
+                    ]}
+                  />
+                  {!focus && (
+                    <>
+                      <button
+                        type="button"
+                        className={`ghost-btn ${editMode ? "is-on" : ""}`}
+                        onClick={() => setEditMode(!editMode)}
+                        aria-pressed={editMode}
+                        aria-label={editMode ? "Done editing" : "Edit chords"}
+                        title="Fix chords by hand (E)"
+                      >
+                        <Icon name={editMode ? "check" : "edit"} size={16} /> <span>{editMode ? "Done" : "Edit"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost-btn"
+                        onClick={copyChart}
+                        aria-label="Copy chart as text"
+                        title="Copy the chart as text"
+                      >
+                        <Icon name="copy" size={16} /> <span>Copy</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -542,91 +565,113 @@ export default function App() {
                 </span>
               </div>
             )}
-            {phase === "ready" && sensitivity === "normal" && (arrangement.quick_changes_hint ?? 0) >= 3 && (
-              <div className="notice">
-                <Icon name="sparkle" size={18} />
-                <span>
-                  <strong>Catch fast changes</strong> finds {arrangement.quick_changes_hint} more chord changes in this song, ones that last
-                  only a beat or two.
-                </span>
-                <button type="button" className="ghost-btn" onClick={() => changeSensitivity("sensitive")} disabled={recharting}>
-                  Show them <Icon name="arrow" size={16} />
-                </button>
-              </div>
-            )}
-
-            {arrangement && (
-              <Toolbar
-                instrument={instrument}
-                detail={detail}
-                onDetail={setDetail}
-                transposition={transposition}
-                onTranspose={setTransposition}
-                shownKey={shownKey || "Key"}
-                originalKey={arrangement.key}
-                capo={capo}
-                onCapo={setCapo}
-                suggestedCapo={capoHint}
-                sensitivity={sensitivity}
-                onSensitivity={changeSensitivity}
-                recharting={recharting}
-              />
-            )}
-
-            {progression.length > 1 && (
-              <div className="progression" aria-label="Main progression">
-                <span className="progression__label">Main progression</span>
-                <ol>
-                  {progression.map((chord, i) => (
-                    <li key={i}>
-                      <ChordName chord={chord} />
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
-
-            {editMode && (
-              <p className="edit-hint">
-                <Icon name="edit" size={16} /> Tap a chord to change it. Changes stay until you load another song.
-              </p>
-            )}
-
-            {phase === "loading" ? (
-              <AnalysisProgress signingIn={SIGN_IN_BROWSERS.find(([value]) => value === signingIn)?.[1]} />
-            ) : (
-              <ChordGrid
-                rows={rows}
-                perRow={perRow}
-                beatsPerBar={arrangement?.beats_per_bar || 4}
+            {focus ? (
+              <FocusStage
+                events={events}
+                beats={arrangement.beats}
+                beatsPerBar={arrangement.beats_per_bar || 4}
+                firstDownbeat={arrangement.first_downbeat ?? 0}
+                tempo={arrangement.tempo}
                 display={display}
-                activeEvent={events[position.event]}
-                activeBar={position.bar}
-                activeBeat={position.beat}
-                loopRow={loopRow}
-                editMode={editMode}
-                barRefs={barRefs}
+                instrument={instrument}
+                nowIndex={position.event}
+                started={started}
+                beatInBar={position.bar >= 0 && bars[position.bar] ? { beat: position.beat, count: bars[position.bar].beats.length } : null}
+                toNext={position.toNext}
+                frameRef={focusFrameRef}
+                currentTime={player.currentTime}
                 onSeek={seekTo}
-                onEdit={setEditing}
               />
-            )}
+            ) : (
+              <>
+                {phase === "ready" && sensitivity === "normal" && (arrangement.quick_changes_hint ?? 0) >= 3 && (
+                  <div className="notice">
+                    <Icon name="sparkle" size={18} />
+                    <span>
+                      <strong>Catch fast changes</strong> finds {arrangement.quick_changes_hint} more chord changes in this song, ones that
+                      last only a beat or two.
+                    </span>
+                    <button type="button" className="ghost-btn" onClick={() => changeSensitivity("sensitive")} disabled={recharting}>
+                      Show them <Icon name="arrow" size={16} />
+                    </button>
+                  </div>
+                )}
 
-            {phase === "ready" && (
-              <footer className="song__footer">
-                <span>
-                  {sensitivity === "sensitive" ? "Catching fast changes" : "Steady"} · analyser {arrangement.analyzer_version ?? "unknown"}
-                </span>
-                <span className="shortcuts" aria-label="Keyboard shortcuts">
-                  <Icon name="keyboard" size={16} />
-                  <kbd>Space</kbd> play <kbd>←</kbd>
-                  <kbd>→</kbd> chords <kbd>L</kbd> loop <kbd>S</kbd> simple <kbd>E</kbd> edit <kbd>−</kbd>
-                  <kbd>+</kbd> key <kbd>0</kbd> reset key
-                </span>
-              </footer>
+                {arrangement && (
+                  <Toolbar
+                    instrument={instrument}
+                    detail={detail}
+                    onDetail={setDetail}
+                    transposition={transposition}
+                    onTranspose={setTransposition}
+                    shownKey={shownKey || "Key"}
+                    originalKey={arrangement.key}
+                    capo={capo}
+                    onCapo={setCapo}
+                    suggestedCapo={capoHint}
+                    sensitivity={sensitivity}
+                    onSensitivity={changeSensitivity}
+                    recharting={recharting}
+                  />
+                )}
+
+                {progression.length > 1 && (
+                  <div className="progression" aria-label="Main progression">
+                    <span className="progression__label">Main progression</span>
+                    <ol>
+                      {progression.map((chord, i) => (
+                        <li key={i}>
+                          <ChordName chord={chord} />
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {editMode && (
+                  <p className="edit-hint">
+                    <Icon name="edit" size={16} /> Tap a chord to change it. Changes stay until you load another song.
+                  </p>
+                )}
+
+                {phase === "loading" ? (
+                  <AnalysisProgress signingIn={SIGN_IN_BROWSERS.find(([value]) => value === signingIn)?.[1]} />
+                ) : (
+                  <ChordGrid
+                    rows={rows}
+                    perRow={perRow}
+                    beatsPerBar={arrangement?.beats_per_bar || 4}
+                    display={display}
+                    activeEvent={events[position.event]}
+                    activeBar={position.bar}
+                    activeBeat={position.beat}
+                    loopRow={loopRow}
+                    editMode={editMode}
+                    barRefs={barRefs}
+                    onSeek={seekTo}
+                    onEdit={setEditing}
+                  />
+                )}
+
+                {phase === "ready" && (
+                  <footer className="song__footer">
+                    <span>
+                      {sensitivity === "sensitive" ? "Catching fast changes" : "Steady"} · analyser{" "}
+                      {arrangement.analyzer_version ?? "unknown"}
+                    </span>
+                    <span className="shortcuts" aria-label="Keyboard shortcuts">
+                      <Icon name="keyboard" size={16} />
+                      <kbd>Space</kbd> play <kbd>←</kbd>
+                      <kbd>→</kbd> chords <kbd>L</kbd> loop <kbd>S</kbd> simple <kbd>E</kbd> edit <kbd>−</kbd>
+                      <kbd>+</kbd> key <kbd>0</kbd> reset key <kbd>F</kbd> focus
+                    </span>
+                  </footer>
+                )}
+              </>
             )}
           </section>
 
-          {phase === "ready" && (
+          {phase === "ready" && !focus && (
             <div className={`minibar ${playerVisible ? "" : "is-shown"}`} aria-label="Now playing" aria-hidden={playerVisible}>
               <button
                 type="button"

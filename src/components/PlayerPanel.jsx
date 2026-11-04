@@ -35,6 +35,7 @@ export default function PlayerPanel({
   onNext,
   onToggleLoop,
   onHear,
+  compact = false,
   children,
 }) {
   const nowChord = now ? display(now.chord) : null;
@@ -112,7 +113,7 @@ export default function PlayerPanel({
             ]}
           />
         </div>
-        {!now && !next && !started ? (
+        {compact ? null : !now && !next && !started ? (
           <div className="nownext">
             <p className="nownext__empty">Chords and finger shapes show up here once the chart is ready.</p>
           </div>
@@ -155,7 +156,7 @@ export default function PlayerPanel({
           </div>
         )}
       </div>
-      {children}
+      {!compact && children}
     </section>
   );
 }

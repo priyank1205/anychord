@@ -1438,6 +1438,232 @@ button.seg.is-active:hover {
   outline-offset: -2px;
 }
 
+/* ---- Focus view: the chord now, and the next ones scrolling in ---------------- */
+
+.song--focus .eyebrow,
+.song--focus .meta {
+  display: none;
+}
+.song--focus .song__heading {
+  align-items: center;
+}
+.song--focus .song__heading h1 {
+  margin: 0;
+  font-size: clamp(20px, 2vw, 26px);
+}
+
+.stage {
+  --stage-h: clamp(300px, calc(100dvh - var(--topbar) - 240px), 380px);
+  display: grid;
+  grid-template-columns: minmax(230px, 32%) minmax(0, 1fr);
+  height: var(--stage-h);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+.stage__now {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px 22px 20px;
+  background: linear-gradient(180deg, var(--accent-soft), transparent 75%), var(--surface);
+}
+.stage__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+}
+.stage__label {
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+.stage__beats {
+  display: inline-flex;
+  gap: 5px;
+}
+.stage__beats i {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--line-strong);
+  transition:
+    background 0.08s,
+    transform 0.08s;
+}
+.stage__beats i:first-child {
+  width: 12px;
+}
+.stage__beats i.is-on {
+  background: var(--accent);
+  transform: scale(1.25);
+}
+.stage__chord {
+  margin-top: 8px;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: min(108px, 34cqi);
+  letter-spacing: -0.03em;
+}
+.stage__chord--long {
+  font-size: min(80px, 25cqi);
+}
+.stage__chord--longer {
+  font-size: min(62px, 19cqi);
+}
+.stage__chord.chord-name--rest {
+  font-size: min(64px, 22cqi);
+}
+.stage__shapes {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: auto;
+  padding-top: 12px;
+}
+.stage__shape {
+  min-width: 0;
+}
+/* The next chord's shape, smaller and quieter, so fingers can get ready. */
+.stage__next {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  opacity: 0.85;
+}
+.stage__next-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.stage__next-label .chord-name {
+  color: var(--text-2);
+  font-size: 15px;
+}
+.stage__next .diagram__dot {
+  fill: var(--next-dot);
+}
+.stage__next .diagram__finger {
+  fill: var(--bg);
+}
+.stage__next .piano__key--on {
+  fill: var(--next-key);
+}
+.stage--piano .stage__next {
+  display: none;
+}
+@container (min-width: 420px) {
+  .stage--piano .stage__next {
+    display: flex;
+  }
+}
+.stage__shape .diagram {
+  margin: 0;
+}
+.stage__hint {
+  max-width: 22em;
+  color: var(--text-3);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.lane {
+  --lane-size: 38px;
+  position: relative;
+  overflow: hidden;
+  overflow: clip; /* hidden still lets the browser scroll it, e.g. to a focused chord */
+  -webkit-mask-image: linear-gradient(90deg, #000 80%, transparent);
+  mask-image: linear-gradient(90deg, #000 80%, transparent);
+}
+/* The line chords travel to: when a chord reaches it, it's the one to play. */
+.lane::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--accent);
+  box-shadow: 0 0 18px 2px rgb(255 181 71 / 0.35);
+}
+.lane__track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  will-change: transform;
+}
+.lane__beats {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+}
+.lane__beat {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.lane__bar {
+  stroke: var(--text-3);
+  stroke-width: 1.5;
+}
+.lane__block {
+  position: absolute;
+  top: 0;
+  bottom: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 46px 10px 10px 14px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-2);
+  text-align: left;
+  overflow: hidden;
+  transition: background 0.15s;
+}
+@media (hover: hover) {
+  .lane__block:hover {
+    background: var(--surface);
+  }
+}
+.lane__block.is-now {
+  border-left-color: transparent;
+  background: linear-gradient(90deg, var(--accent-soft), rgb(255 181 71 / 0.05));
+}
+.lane__block.is-next {
+  color: var(--text);
+  border-left-color: var(--text-2);
+}
+.lane__block.is-rest {
+  border-left-style: dashed;
+}
+.lane__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  max-width: 100%;
+}
+.lane__chord {
+  font-size: min(var(--lane-size), var(--fit));
+}
+.lane__in {
+  flex: none;
+  color: var(--accent-text);
+  font-size: 12.5px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---- Player ------------------------------------------------------------------ */
 
 .player {
@@ -2160,7 +2386,75 @@ button.seg.is-active:hover {
   }
 }
 
+@media (max-width: 900px) {
+  /* Focus: the chords come first; the video and controls sit just below. */
+  .song--focus .song__main {
+    order: -1;
+  }
+}
+
 @media (max-width: 760px) {
+  .stage {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 106px;
+    height: auto;
+  }
+  .song--focus {
+    gap: 12px;
+    padding-top: 10px;
+  }
+  .song--focus .song__heading h1 {
+    font-size: 19px;
+  }
+  .stage__now {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr;
+    column-gap: 12px;
+    padding: 12px 16px 12px;
+  }
+  .stage__top {
+    grid-column: 1 / -1;
+  }
+  .stage__chord {
+    align-self: center;
+    font-size: min(76px, 28cqi);
+  }
+  .stage__chord--long {
+    font-size: min(64px, 22cqi);
+  }
+  .stage__chord--longer {
+    font-size: min(50px, 17cqi);
+  }
+  .stage__shapes {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+    padding: 0;
+  }
+  .stage__next,
+  .stage--piano .stage__next {
+    display: none;
+  }
+  .stage__shape .diagram:not(.diagram--piano) {
+    width: 92px;
+  }
+  .stage__shape .diagram--piano {
+    width: 150px;
+  }
+  .stage__hint {
+    grid-column: 1 / -1;
+  }
+  .lane {
+    --lane-size: 28px;
+  }
+  .lane__block {
+    padding-top: 16px;
+  }
+  .song__heading {
+    flex-wrap: wrap;
+  }
+
   :root {
     --topbar: 56px;
   }
