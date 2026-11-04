@@ -30,9 +30,9 @@ npm run setup   # once: installs everything (about a minute)
 npm start       # every time: starts the analyser and the website, opens your browser
 ```
 
-Paste a YouTube link and click **Get chords**. Press `Ctrl+C` in the terminal to stop.
+AnyChords opens at **http://localhost:5288**. If another app on your computer is using that port, it takes the next free one (5289, ...) and says so in the terminal. Paste a YouTube link and click **Get chords**. Press `Ctrl+C` in the terminal to stop.
 
-After a `git pull`, restart with `npm start`. It stops any analyser still running from before, and the line under the chart shows which analyser version made it. If the code on disk is newer than the running analyser, the page tells you to restart.
+After a `git pull`, restart with `npm start`. It stops any AnyChords still running from before in this folder (other apps are left alone), and the line under the chart shows which analyser version made it. If the code on disk is newer than the running analyser, the page tells you to restart.
 
 ## If YouTube Blocks a Download
 

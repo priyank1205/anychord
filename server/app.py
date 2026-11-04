@@ -11,7 +11,6 @@ from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from server import youtube
@@ -57,12 +56,9 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="AnyChords local analyzer", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
+# No cross-origin access: the page reaches this server through the website
+# server's /api proxy (vite.config.js), so other sites and other apps' pages on
+# this computer can't call it from a browser.
 
 
 class AnalyzeRequest(BaseModel):

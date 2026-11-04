@@ -17,7 +17,9 @@ import { formatTime, keyAt, simplifyChord, suggestCapo, transposeChord, transpos
 import { youtubeVideoId } from "./lib/trackInput";
 import { SIGN_IN_BROWSERS } from "./components/ProblemCard";
 
-const API = "http://127.0.0.1:8000";
+// Same address as the page: the website server passes /api on to the analyser
+// (see vite.config.js), whichever ports `npm start` picked.
+const API = "";
 const INSTRUMENTS = ["ukulele", "guitar", "piano"];
 
 // Simple view: every chord as the triad you'd strum, repeats merged.
@@ -103,10 +105,25 @@ export default function App() {
 
   // ---- Server ------------------------------------------------------------
   useEffect(() => {
-    fetch(`${API}/api/health`)
-      .then((response) => response.json())
-      .then(setAnalyzer)
-      .catch(() => setAnalyzer({ offline: true }));
+    // If the analyser isn't answering (still starting, or stopped), look again,
+    // a little less often each time.
+    let stopped = false;
+    let timer = 0;
+    let attempt = 0;
+    const check = () =>
+      fetch(`${API}/api/health`)
+        .then((response) => response.json())
+        .then((health) => !stopped && setAnalyzer(health))
+        .catch(() => {
+          if (stopped) return;
+          setAnalyzer({ offline: true });
+          timer = window.setTimeout(check, Math.min(30000, 2500 * 2 ** attempt++));
+        });
+    check();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
   }, []);
 
   const showToast = useCallback((message, tone = "neutral") => {
@@ -127,7 +144,10 @@ export default function App() {
       }).catch(() => {
         throw problemError({ code: "offline", message: "Can’t reach the analyser. In the terminal, run npm start, then try again." });
       });
-      const result = await response.json().catch(() => ({}));
+      // No JSON at all means the website server couldn't reach the analyser.
+      const result = await response.json().catch(() => null);
+      if (!result)
+        throw problemError({ code: "offline", message: "Can’t reach the analyser. In the terminal, run npm start, then try again." });
       if (!response.ok) throw problemError(result.detail);
       setAnalyzer((current) => ({ ...current, analyzer_version: result.analyzer_version, restart_required: result.restart_required }));
       return result;

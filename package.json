@@ -7,7 +7,7 @@
     "setup": "bash scripts/setup.sh",
     "start": "bash scripts/start.sh",
     "dev": "vite",
-    "dev:analyzer": "python3 -m uvicorn server.app:app --host 127.0.0.1 --port 8000",
+    "dev:analyzer": "python3 -m uvicorn server.app:app --host 127.0.0.1 --port 8288",
     "build": "vite build",
     "preview": "vite preview",
     "test:analyzer": "python3 -m pytest server/tests -q",
