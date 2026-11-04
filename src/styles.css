@@ -293,3 +293,7 @@ button { cursor: pointer; }
 .chord-alt:hover { background: rgba(190,160,248,.2); color: #eee6f8; }
 .song-facts dd.key-change { margin-top: 4px; color: #a89dac; font-size: 11px; }
 .toolbar-switches { display: flex; flex-wrap: wrap; gap: 10px; }
+.analyzer-line { margin: 8px 0 0 !important; color: #776c86 !important; font-family: "DM Mono", monospace; font-size: 10px !important; }
+.notice-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; padding: 10px 14px; border: 1px solid rgba(190,160,248,.25); border-radius: 10px; color: #dcd3e6; background: rgba(190,160,248,.08); font-size: 13px; }
+.notice-bar.warning { border-color: rgba(255,190,120,.45); background: rgba(255,190,120,.1); color: #f3dcc4; }
+.notice-bar code { font-family: "DM Mono", monospace; }

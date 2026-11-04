@@ -28,6 +28,8 @@ npm start       # every time: starts the analyser and the website, opens your br
 
 Paste a YouTube link and click **Make my chart**. Press `Ctrl+C` in the terminal to stop.
 
+After a `git pull`, restart with `npm start`. It stops any analyser still running from before, and the chart's status card shows which analyser version made the chart. If the code on disk is newer than the running analyser, the page tells you to restart.
+
 ## Tech Stack
 
 - **Frontend:** React, Vite, Vanilla CSS 

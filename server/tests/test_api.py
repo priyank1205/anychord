@@ -32,6 +32,13 @@ def test_analyze_endpoint_end_to_end(monkeypatch, tmp_path):
         assert body["title"] == "Test song"
         assert body["key"] == "B minor"
         assert {"tempo", "meter", "confidence", "timing", "progression", "key_changes", "opening_key"} <= body.keys()
+        assert body["sensitivity"] == "normal"
+        assert isinstance(body["quick_changes_hint"], int) and body["quick_changes_hint"] >= 0
+        assert body["restart_required"] is False  # same code on disk as the running server
+
+        health = client.get("/api/health").json()
+        assert health["status"] == "ok"
+        assert health["analyzer_version"] == body["analyzer_version"]
 
         calls = len(downloads)
         again = client.post("/api/analyze", json={"youtube_url": "https://youtu.be/dQw4w9WgXcQ", "sensitivity": "sensitive"})
@@ -43,3 +50,10 @@ def test_analyze_endpoint_end_to_end(monkeypatch, tmp_path):
         assert bad.status_code == 400
         wrong = client.post("/api/analyze", json={"youtube_url": "https://youtu.be/dQw4w9WgXcQ", "sensitivity": "max"})
         assert wrong.status_code == 422
+
+
+def test_stale_analyser_says_it_needs_a_restart(monkeypatch):
+    """After `git pull` with the old server still running, answers must say so."""
+    monkeypatch.setattr(server_app, "RUNNING_VERSION", "0000000")
+    with TestClient(server_app.app) as client:
+        assert client.get("/api/health").json()["restart_required"] is True

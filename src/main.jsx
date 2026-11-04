@@ -54,6 +54,8 @@ function App() {
   // "More" re-charts the same audio with the analyser's quick-changes setting.
   const [sensitivity, setSensitivity] = useState("normal");
   const [recharting, setRecharting] = useState(false);
+  // Which analyser answered, and whether it's older than the code on disk.
+  const [analyzer, setAnalyzer] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [toast, setToast] = useState("");
   const [analysisError, setAnalysisError] = useState("");
@@ -72,6 +74,13 @@ function App() {
   const title = hasGeneratedChart ? arrangement.title : hasVideo ? "YouTube video ready" : arrangement.title;
 
   // Load YouTube Iframe API script dynamically
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/api/health")
+      .then((response) => response.json())
+      .then(setAnalyzer)
+      .catch(() => setAnalyzer({ offline: true }));
+  }, []);
+
   useEffect(() => {
     if (window.YT) return;
     const tag = document.createElement("script");
@@ -216,6 +225,7 @@ function App() {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.detail || "Chord analysis could not be completed.");
+    setAnalyzer({ analyzer_version: result.analyzer_version, restart_required: result.restart_required });
     return result;
   }
 
@@ -386,6 +396,11 @@ function App() {
               <div className="confidence-title"><span><Icon>✦</Icon> Chart status</span><b>{hasGeneratedChart ? formatConfidence(arrangement.confidence) : hasVideo ? "Analysing" : formatConfidence(arrangement.confidence)}</b></div>
               <div className="confidence-track"><span style={confidenceValue !== null ? { width: `${Math.round(confidenceValue * 100)}%` } : undefined} /></div>
               <p>{hasGeneratedChart ? "Generated locally from the video audio. Chords with a dotted underline are the analyser’s least certain calls — check those first." : hasVideo ? "The local analyser is reading the video audio. The generated chart will appear here when it finishes." : "Editable preview chart. Paste a YouTube link to start an actual song analysis."}</p>
+              {hasGeneratedChart && (
+                <p className="analyzer-line">
+                  {arrangement.sensitivity === "sensitive" ? "Quick changes" : "Steady"} mode · analyser {arrangement.analyzer_version ?? "unknown"}
+                </p>
+              )}
             </div>
           </aside>
 
@@ -439,6 +454,19 @@ function App() {
               </div>
             </div>
             
+            {analyzer?.restart_required && (
+              <div className="notice-bar warning" role="alert">
+                <span>AnyChords was updated but the analyser is still running the old version. In the terminal press Ctrl+C, run <code>npm start</code>, then make the chart again.</span>
+              </div>
+            )}
+            {hasGeneratedChart && sensitivity === "normal" && (arrangement.quick_changes_hint ?? 0) >= 3 && (
+              <div className="notice-bar">
+                <span>Quick changes shows {arrangement.quick_changes_hint} more chord changes in this song.</span>
+                <button type="button" className="ghost-button" onClick={() => changeSensitivity("sensitive")} disabled={recharting}>
+                  Show them <Icon>→</Icon>
+                </button>
+              </div>
+            )}
             {progressionParts.length > 1 && (
               <div className="core-progression-bar">
                 <span className="progression-label"><Icon>✦</Icon> Repeating Pattern:</span>

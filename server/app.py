@@ -24,6 +24,30 @@ import librosa
 from server.analysis import SR, AnalysisError, Features, analyze_audio, analyze_features, extract_features, params_for
 
 VENDOR_DIRECTORY = Path(__file__).parent / "vendor"
+REPOSITORY = Path(__file__).resolve().parent.parent
+
+
+def _code_version() -> str | None:
+    """Short git commit of the code on disk (None outside a git checkout)."""
+    try:
+        result = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=REPOSITORY, capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return result.stdout.strip() or None
+
+
+# The code this process is running. If `git pull` brings newer code while it
+# runs, answers say so: a stale analyser silently giving old results is worse
+# than a nag to restart.
+RUNNING_VERSION = _code_version()
+
+
+def version_info() -> dict:
+    on_disk = _code_version()
+    return {
+        "analyzer_version": RUNNING_VERSION,
+        "restart_required": bool(RUNNING_VERSION and on_disk and on_disk != RUNNING_VERSION),
+    }
 
 
 @asynccontextmanager
@@ -43,7 +67,7 @@ app = FastAPI(title="AnyChords local analyzer", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
-    allow_methods=["POST"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
@@ -128,6 +152,16 @@ def download_audio(url: str, workdir: Path) -> tuple[Path, dict]:
     return wav_files[0], metadata
 
 
+@app.get("/api/health")
+def health():
+    return {"status": "ok", **version_info()}
+
+
+def _count_changes(result: dict) -> int:
+    chords = [event["chord"] for event in result["timing"] if event["chord"] != "N.C."]
+    return sum(1 for a, b in zip(chords, chords[1:]) if a != b)
+
+
 @app.post("/api/analyze")
 def analyze(request: AnalyzeRequest):
     print(f"Analyzing URL: {request.youtube_url}")
@@ -137,11 +171,18 @@ def analyze(request: AnalyzeRequest):
     try:
         features, metadata = _features_for(request.youtube_url)
         result = analyze_features(features, params_for(request.sensitivity))
+        # How many more chord changes "Quick changes" would show for this song,
+        # so the page can suggest it where it matters (decoding is ~1-2 s).
+        hint = 0
+        if request.sensitivity == "normal":
+            hint = max(0, _count_changes(analyze_features(features, params_for("sensitive"))) - _count_changes(result))
     except AnalysisError as error:
         raise HTTPException(422, str(error)) from error
     return {
         "title": metadata.get("title") or "YouTube video",
         "artist": metadata.get("uploader") or metadata.get("channel") or "YouTube",
         "sensitivity": request.sensitivity,
+        "quick_changes_hint": hint,
+        **version_info(),
         **result,
     }
