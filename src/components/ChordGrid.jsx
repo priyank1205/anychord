@@ -19,9 +19,10 @@ export default function ChordGrid({
   barRefs,
   onSeek,
   onEdit,
+  variant,
 }) {
   return (
-    <div className={`grid ${editMode ? "grid--editing" : ""}`}>
+    <div className={["grid", editMode && "grid--editing", variant && `grid--${variant}`].filter(Boolean).join(" ")}>
       {rows.map((row) => {
         const fill = Math.max(0, perRow - row.bars.filter((bar) => !bar.pickup).length);
         const columns = row.bars.map((bar) => `${Math.min(1, bar.beats.length / beatsPerBar)}fr`);
@@ -39,7 +40,7 @@ export default function ChordGrid({
                   <div
                     key={bar.index}
                     ref={barRefs ? (node) => (barRefs.current[bar.index] = node) : undefined}
-                    className={`bar ${bar.pickup ? "bar--pickup" : ""} ${isActiveBar ? "is-active" : ""}`}
+                    className={`bar ${bar.pickup ? "bar--pickup" : ""} ${isActiveBar ? "is-active" : ""} ${activeBar > bar.index ? "is-played" : ""}`}
                   >
                     <div className="bar__segments">
                       {bar.segments.map((segment, segmentIndex) => {

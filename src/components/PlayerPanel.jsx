@@ -156,7 +156,7 @@ export default function PlayerPanel({
           </div>
         )}
       </div>
-      {!compact && children}
+      {children}
     </section>
   );
 }

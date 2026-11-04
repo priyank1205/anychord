@@ -6,7 +6,7 @@ import ChordName from "./ChordName";
 // this song's typical chord length, within limits that keep names readable.
 // One zoom per song, so the lane always moves at a steady speed.
 function beatsShown(width, typicalBeats) {
-  const [chords, min, max] = width >= 760 ? [5.5, 8, 36] : width >= 460 ? [4, 6, 28] : [3, 5, 16];
+  const [chords, min, max] = width >= 760 ? [6.5, 8, 40] : width >= 460 ? [5, 6, 30] : [3.5, 5, 18];
   return Math.min(max, Math.max(min, Math.round(typicalBeats * chords)));
 }
 
@@ -150,14 +150,15 @@ export default function FocusStage({
         ) : (
           <span className="stage__chord chord-name chord-name--rest">Ready</span>
         )}
+        {(!nowName || nowName === "N.C.") && (
+          <p className="stage__hint">{started ? "No chord here." : "Press play, or tap a chord on the right to start there."}</p>
+        )}
         <div className="stage__shapes">
-          <div className="stage__shape">
-            {nowName && nowName !== "N.C." ? (
+          {nowName && nowName !== "N.C." && (
+            <div className="stage__shape">
               <ChordDiagram chord={nowName} instrument={instrument} size={instrument === "piano" ? 190 : 120} />
-            ) : (
-              <p className="stage__hint">{started ? "No chord here." : "Press play, or tap a chord on the right to start there."}</p>
-            )}
-          </div>
+            </div>
+          )}
           {nextName && (
             <div className="stage__next" aria-label={`Next: ${nextName}`}>
               <span className="stage__next-label">

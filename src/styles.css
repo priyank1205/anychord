@@ -1452,10 +1452,12 @@ button.seg.is-active:hover {
   font-size: clamp(20px, 2vw, 26px);
 }
 
-.stage {
+.song--focus {
   --stage-h: clamp(300px, calc(100dvh - var(--topbar) - 240px), 380px);
+}
+.stage {
   display: grid;
-  grid-template-columns: minmax(230px, 32%) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 30%) minmax(0, 1fr);
   height: var(--stage-h);
   border-radius: var(--r-xl);
   border: 1px solid var(--line);
@@ -1534,6 +1536,7 @@ button.seg.is-active:hover {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  margin-left: auto; /* stays right even before there's a current shape */
   gap: 8px;
   opacity: 0.85;
 }
@@ -1662,6 +1665,94 @@ button.seg.is-active:hover {
   font-size: 12.5px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- Focus view: the whole song, small, below the lane ------------------------- */
+
+.map {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.map__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 550;
+  font-variant-numeric: tabular-nums;
+}
+.map__title {
+  color: var(--text-2);
+  font-weight: 650;
+}
+/* Fills the screen below the stage and scrolls on its own; the playing line
+   is kept at the top, so what's below is what's coming. */
+.map__box {
+  position: relative;
+  max-height: max(200px, calc(100dvh - var(--topbar) - var(--stage-h) - 200px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
+}
+.grid--map {
+  gap: 6px;
+}
+.grid--map .grid__row {
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 4px;
+  scroll-margin: 0;
+}
+.grid--map .grid__number {
+  padding-top: 9px;
+  font-size: 11px;
+}
+.grid--map .grid__bars {
+  border-radius: var(--r-md);
+}
+.grid--map .bar {
+  min-height: 38px;
+  padding: 3px 3px 3px;
+  transition: opacity 0.3s;
+}
+.grid--map .bar__beats {
+  display: none;
+}
+.grid--map .bar.is-played {
+  opacity: 0.38;
+}
+.grid--map .seg {
+  font-size: 15px;
+  padding: 0 7px;
+  border-radius: 7px;
+}
+.grid--map .seg--tight {
+  font-size: 13px;
+  padding: 0 3px;
+}
+.grid--map .seg--rest .chord-name {
+  font-size: 11px;
+}
+.grid--map .seg.is-active,
+.grid--map button.seg.is-active:hover {
+  box-shadow: none;
+}
+.grid--map .seg--held:empty::before {
+  left: 6px;
+  right: 6px;
+  height: 1.5px;
+}
+.grid--map .seg__flag {
+  top: 4px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
 }
 
 /* ---- Player ------------------------------------------------------------------ */
@@ -2311,8 +2402,8 @@ button.seg.is-active:hover {
   .shapes .nownext {
     flex: 1;
   }
-  .sheet {
-    grid-area: sheet;
+  .player .sheet {
+    grid-area: sheet; /* only inside the player's own grid */
   }
   .sheet__grid,
   .sheet--piano .sheet__grid {
@@ -2387,9 +2478,31 @@ button.seg.is-active:hover {
 }
 
 @media (max-width: 900px) {
-  /* Focus: the chords come first; the video and controls sit just below. */
+  /* Focus, one column: title, the lane, then the video and controls (so play
+     stays on the first screen), then the whole-song map and the chord shapes. */
   .song--focus .song__main {
-    order: -1;
+    display: contents;
+  }
+  .song--focus .song__heading {
+    order: 1;
+  }
+  .song--focus .notice {
+    order: 2;
+  }
+  .song--focus .stage {
+    order: 3;
+  }
+  .song--focus .song__side {
+    order: 4;
+  }
+  .song--focus .map {
+    order: 5;
+  }
+  .song--focus .sheet {
+    order: 6;
+  }
+  .song--focus .map__box {
+    max-height: 340px;
   }
 }
 
@@ -2537,6 +2650,10 @@ button.seg.is-active:hover {
   }
   .grid__number {
     display: none;
+  }
+  /* The song map keeps its bar numbers: it's for finding your place. */
+  .grid--map .grid__number {
+    display: block;
   }
   .bar {
     min-height: 68px;

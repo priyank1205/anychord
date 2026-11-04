@@ -5,6 +5,7 @@ import ChordGrid from "./components/ChordGrid";
 import ChordName from "./components/ChordName";
 import ChordSheet from "./components/ChordSheet";
 import FocusStage from "./components/FocusStage";
+import SongMap from "./components/SongMap";
 import Segmented from "./components/Segmented";
 import Icon from "./components/Icon";
 import Landing, { LinkForm } from "./components/Landing";
@@ -76,6 +77,7 @@ export default function App() {
   const [sheetState, setSheetState] = useStoredState("anychords.sheet", "open", ["open", "closed"]);
   // Chart: the full lead sheet. Focus: just the chord now and the next few, scrolling.
   const [view, setView] = useStoredState("anychords.view", "chart", ["chart", "focus"]);
+  const focus = view === "focus" && phase === "ready";
   const [sensitivity, setSensitivity] = useState("normal");
   // The browser whose YouTube sign-in the analyser may use if YouTube blocks a download.
   const [browser, setBrowser] = useStoredState("anychords.browser", "", ["", ...SIGN_IN_BROWSERS.map(([value]) => value)]);
@@ -93,6 +95,7 @@ export default function App() {
   });
   const [toast, setToast] = useState(null);
   const narrow = useMediaQuery("(max-width: 760px)");
+  const stacked = useMediaQuery("(max-width: 900px)"); // one column: side panel above the chart
   const [playerVisible, setPlayerVisible] = useState(true);
 
   const timeRef = useRef(null);
@@ -222,6 +225,8 @@ export default function App() {
   const bars = useMemo(() => (arrangement ? buildBars(events, arrangement) : []), [events, arrangement]);
   const perRow = narrow ? 2 : 4;
   const rows = useMemo(() => toRows(bars, perRow), [bars, perRow]);
+  const mapPerRow = narrow ? 4 : 8;
+  const mapRows = useMemo(() => toRows(bars, mapPerRow), [bars, mapPerRow]);
   const capoUsed = instrument === "guitar" ? capo : 0;
   const offset = transposition - capoUsed;
   const display = useCallback(
@@ -290,14 +295,15 @@ export default function App() {
   // Keep the playing line in view, unless the reader scrolled away recently.
   const activeRow = position.bar >= 0 ? rowOfBar[position.bar] : -1;
   useEffect(() => {
-    if (!player.playing || activeRow < 0 || Date.now() - lastUserScroll.current < 4000) return;
+    // Focus has its own follow inside the song map; scrolling the page there would push the lane away.
+    if (focus || !player.playing || activeRow < 0 || Date.now() - lastUserScroll.current < 4000) return;
     const node = document.querySelector(`[data-row="${activeRow}"]`);
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     node?.scrollIntoView({
       block: "center",
       behavior: reduce ? "auto" : "smooth",
     });
-  }, [activeRow, player.playing]);
+  }, [activeRow, player.playing, focus]);
   useEffect(() => {
     const mark = () => (lastUserScroll.current = Date.now());
     window.addEventListener("wheel", mark, { passive: true });
@@ -406,7 +412,6 @@ export default function App() {
   // ---- Views ---------------------------------------------------------------
   const inSong = phase === "loading" || phase === "ready" || (phase === "error" && Boolean(arrangement));
   const started = position.event >= 0;
-  const focus = view === "focus" && phase === "ready";
   const now = started ? events[position.event] : null;
   const next = started ? events[position.event + 1] : events.find((event) => event.chord !== "N.C.");
   const confidence = typeof arrangement?.confidence === "number" ? Math.round(arrangement.confidence * 100) : null;
@@ -416,6 +421,17 @@ export default function App() {
         .map((chord) => display(chord))
         .filter((chord, i, all) => i === 0 || chord !== all[i - 1])
     : [];
+
+  const chordSheet = phase === "ready" && songChords.length > 0 && (
+    <ChordSheet
+      chords={songChords}
+      active={started && now ? display(now.chord, now.start) : null}
+      instrument={instrument}
+      open={sheetState === "open"}
+      onToggle={() => setSheetState(sheetState === "open" ? "closed" : "open")}
+      onHear={hear}
+    />
+  );
 
   // The mini player takes over once Now / Next scrolls out of view.
   useEffect(() => {
@@ -488,16 +504,7 @@ export default function App() {
               onHear={hear}
               compact={focus}
             >
-              {phase === "ready" && songChords.length > 0 && (
-                <ChordSheet
-                  chords={songChords}
-                  active={started && now ? display(now.chord, now.start) : null}
-                  instrument={instrument}
-                  open={sheetState === "open"}
-                  onToggle={() => setSheetState(sheetState === "open" ? "closed" : "open")}
-                  onHear={hear}
-                />
-              )}
+              {!(focus && stacked) && chordSheet}
             </PlayerPanel>
           </aside>
 
@@ -602,7 +609,22 @@ export default function App() {
                 currentTime={player.currentTime}
                 onSeek={seekTo}
               />
-            ) : (
+            ) : null}
+            {focus && (
+              <SongMap
+                rows={mapRows}
+                perRow={mapPerRow}
+                beatsPerBar={arrangement.beats_per_bar || 4}
+                display={display}
+                activeEvent={events[position.event]}
+                activeBar={position.bar}
+                activeBeat={position.beat}
+                barRefs={barRefs}
+                onSeek={seekTo}
+              />
+            )}
+            {focus && stacked && chordSheet}
+            {focus ? null : (
               <>
                 {phase === "ready" && sensitivity === "normal" && (arrangement.quick_changes_hint ?? 0) >= 3 && (
                   <div className="notice">
