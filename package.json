@@ -11,7 +11,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:analyzer": "python3 -m pytest server/tests -q",
-    "benchmark": "python3 -m server.benchmark.run"
+    "benchmark": "python3 -m server.benchmark.run",
+    "inspect": ".venv/bin/python -m server.inspect"
   },
   "dependencies": {
     "@tombatossals/chords-db": "^0.5.1",

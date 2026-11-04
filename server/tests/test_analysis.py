@@ -185,3 +185,21 @@ def test_simplify():
     assert _simplify("Bm7b5") == "Bdim"
     assert _simplify("G7sus4") == "Gsus4"
     assert _simplify("E5") == "E5"
+
+
+def test_chart_keeps_the_first_pass_chord_changes():
+    """The detail pass names chord types; it must not undo where the first
+    pass heard the root change (it used to fuse Gm | Bb into one Gm7)."""
+    from server import analysis
+
+    song = make_song(821, fast=True)
+    features = analysis.extract_features(song.audio, song.sr)
+    trace: dict = {}
+    analysis.analyze_features(features, analysis.Params(), trace)
+    path, detail = trace["first_pass"], trace["detail"]
+    root_changes = [
+        t for t in range(1, len(path))
+        if analysis.N_STATE not in (path[t], path[t - 1]) and path[t] // 2 != path[t - 1] // 2
+    ]
+    kept = [t for t in root_changes if detail[t] >= 0 and detail[t] // analysis._Q == path[t] // 2]
+    assert len(kept) >= 0.85 * len(root_changes)

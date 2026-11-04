@@ -105,6 +105,8 @@ class Params:
     tier_penalty: tuple = (0.0, 0.5, 1.0, 1.5, 2.0)  # per-beat cost of each complexity tier
     entry_penalty: tuple = (0.0, 1.0, 2.0, 3.0, 4.0)  # one-off cost of starting such a chord
     same_root_change: float = 0.5  # share of chord changes that keep the root (C -> Cmaj7)
+    first_pass_change: float = 0.9  # detail pass: chance of changing chord where the first pass did
+    same_root_at_change: float = 0.1  # ... and of keeping the root there anyway
     slash_root_level: float = 0.6  # an inversion's root must be this quiet in the bass, relative to the bass note
     detail: bool = True  # False: major/minor triads only
 
@@ -675,6 +677,15 @@ def _detail_transitions(params: Params) -> np.ndarray:
         log_matrix = np.log(matrix) - np.asarray(params.entry_penalty)[_DETAIL_TIER][None, :]
         np.fill_diagonal(log_matrix, np.log(1 - change))
         matrices.append(log_matrix)
+    # Where the first pass changes chord, the detail pass follows it: its job is
+    # to name chord types (7ths, sus ...), not to re-decide where chords change.
+    # Without this it fused the first pass's Gm | Bb | Gm | Bb into one "Gm7".
+    change = params.first_pass_change
+    matrix = np.where(same_root, change * params.same_root_at_change / (_Q - 1), change * (1 - params.same_root_at_change) / 11 / _Q)
+    np.fill_diagonal(matrix, 1 - change)
+    log_matrix = np.log(matrix) - np.asarray(params.entry_penalty)[_DETAIL_TIER][None, :]
+    np.fill_diagonal(log_matrix, np.log(1 - change))
+    matrices.append(log_matrix)
     return np.stack(matrices)
 
 
@@ -687,6 +698,8 @@ def refine_chords(features: Features, path: np.ndarray, posterior: np.ndarray, b
     emissions = detail_emissions(features, path, posterior, params)
     entry_bonus = params.bass_onset_bonus * np.repeat(bass_onsets(features), _Q, axis=0)
     transitions = _detail_transitions(params)
+    classes = beat_classes.copy()
+    classes[1:][path[1:] != path[:-1]] = N_CLASSES  # first-pass chord changes
     detail = np.full(len(path), -1)
     voiced = path != N_STATE
     start = 0
@@ -698,7 +711,7 @@ def refine_chords(features: Features, path: np.ndarray, posterior: np.ndarray, b
         while end < len(path) and voiced[end]:
             end += 1
         run = slice(start, end)
-        detail[run] = viterbi(emissions[:, run], transitions, beat_classes[run], np.zeros(12 * _Q), entry_bonus[:, run])
+        detail[run] = viterbi(emissions[:, run], transitions, classes[run], np.zeros(12 * _Q), entry_bonus[:, run])
         start = end
     return detail, emissions
 
@@ -779,7 +792,9 @@ def analyze_audio(y: np.ndarray, sr: int = SR, params: Params | None = None) -> 
     return analyze_features(extract_features(y, sr, params), params)
 
 
-def analyze_features(features: Features, params: Params | None = None) -> dict:
+def analyze_features(features: Features, params: Params | None = None, trace: dict | None = None) -> dict:
+    """Features -> chart. Pass a dict as `trace` to get the intermediate
+    first-pass posteriors and paths back (used by server.inspect)."""
     params = params or Params()
     logp = emission_logprob(features, params)
     durations = np.diff(features.boundaries)
@@ -814,6 +829,9 @@ def analyze_features(features: Features, params: Params | None = None) -> dict:
     else:  # major/minor only: map first-pass states onto the detail grid
         detail = np.where(path == N_STATE, -1, (path // 2) * _Q + path % 2)
         detail_scores = None
+
+    if trace is not None:
+        trace.update(first_pass=path, posterior=posterior, detail=detail, regions=regions)
 
     region_of_beat = np.zeros(count, dtype=int)
     for index, (first_beat, _) in enumerate(regions):

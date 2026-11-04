@@ -82,31 +82,36 @@ def ytdlp_command(*arguments: str) -> list[str]:
     return [sys.executable, "-m", "yt_dlp", *arguments]
 
 
+def download_audio(url: str, workdir: Path) -> tuple[Path, dict]:
+    """Download a YouTube video's audio as WAV into `workdir`; returns (path, metadata)."""
+    if not (VENDOR_DIRECTORY / "yt_dlp").exists() or not shutil.which("ffmpeg"):
+        raise HTTPException(500, "The project-local yt-dlp package and ffmpeg must be installed on this computer.")
+    environment = ytdlp_environment()
+    metadata_raw = run(ytdlp_command("--no-playlist", "--skip-download", "--dump-single-json", "--extractor-args", "youtube:player_client=android", url), "Could not read video details", environment)
+    metadata = json.loads(metadata_raw)
+    output_template = str(workdir / "source.%(ext)s")
+    run(ytdlp_command(
+        "--no-playlist", "--no-progress", "-f", "bestaudio/best",
+        "-x", "--audio-format", "wav", "--audio-quality", "5",
+        "--extractor-args", "youtube:player_client=android",
+        "-o", output_template, url,
+    ), "Could not download audio", environment)
+    wav_files = list(workdir.glob("*.wav"))
+    if not wav_files:
+        raise HTTPException(422, "The video audio could not be converted for analysis.")
+    return wav_files[0], metadata
+
+
 @app.post("/api/analyze")
 def analyze(request: AnalyzeRequest):
     print(f"Analyzing URL: {request.youtube_url}")
     if not video_id(request.youtube_url):
         raise HTTPException(400, "Please provide a valid YouTube video URL.")
-    if not (VENDOR_DIRECTORY / "yt_dlp").exists() or not shutil.which("ffmpeg"):
-        raise HTTPException(500, "The project-local yt-dlp package and ffmpeg must be installed on this computer.")
 
     with tempfile.TemporaryDirectory(prefix="anychords-") as directory:
-        workdir = Path(directory)
-        environment = ytdlp_environment()
-        metadata_raw = run(ytdlp_command("--no-playlist", "--skip-download", "--dump-single-json", "--extractor-args", "youtube:player_client=android", request.youtube_url), "Could not read video details", environment)
-        metadata = json.loads(metadata_raw)
-        output_template = str(workdir / "source.%(ext)s")
-        run(ytdlp_command(
-            "--no-playlist", "--no-progress", "-f", "bestaudio/best",
-            "-x", "--audio-format", "wav", "--audio-quality", "5",
-            "--extractor-args", "youtube:player_client=android",
-            "-o", output_template, request.youtube_url,
-        ), "Could not download audio", environment)
-        wav_files = list(workdir.glob("*.wav"))
-        if not wav_files:
-            raise HTTPException(422, "The video audio could not be converted for analysis.")
+        wav_path, metadata = download_audio(request.youtube_url, Path(directory))
         try:
-            result = analyze_file(str(wav_files[0]))
+            result = analyze_file(str(wav_path))
         except AnalysisError as error:
             raise HTTPException(422, str(error)) from error
         return {
@@ -114,4 +119,3 @@ def analyze(request: AnalyzeRequest):
             "artist": metadata.get("uploader") or metadata.get("channel") or "YouTube",
             **result,
         }
-

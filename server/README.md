@@ -98,6 +98,14 @@ The known weak spot is a chord that lasts one beat and shares two notes with its
 Chords whose notes are mostly ambiguous are the weakest. G11 is close to F/G, Bm7b5 has the same notes as Dm6, and dim7/aug chords are symmetric, so the bass note has to decide. In those cases you'll often get a playable equivalent rather than the textbook name. The analyser leans towards *under*-labelling: it shows C where a song plays Cadd9 rather than invent extras.
 **Real-world accuracy** is the number that matters, and it hasn't been measured for this code yet. Published template-plus-HMM systems of this kind score roughly 70–80% majmin on real pop datasets in MIREX, so expect something in that range on dense mixes. To measure it, put songs in a folder as `name.wav` plus `name.lab`, where each line of the `.lab` file is `start end chord` (e.g. `12.40 14.95 A:min7`). Add an optional `name.key` containing e.g. `A minor`, then run the `--dataset` command above.
 
+## When a chart looks wrong: see what the analyser hears
+
+```bash
+npm run inspect -- "https://www.youtube.com/watch?v=..." --from 0:10 --to 0:30
+```
+
+This prints one line per half-beat: the chord the chart shows, the first pass's major/minor guesses with how sure it is, the loudest notes, and the bass note. For example, it shows whether the bass really moves from G to Bb (a Gm → Bb change) or stays on G (where "Bb" over G *is* Gm7). Works with audio files too (`npm run inspect -- song.mp3 --from 10 --to 30`).
+
 ## Tests
 
 ```bash
