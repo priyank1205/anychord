@@ -5,19 +5,48 @@ cd "$(dirname "$0")/.."
 
 [ -x .venv/bin/python ] || { echo "First run: npm run setup"; exit 1; }
 
-# An analyser left running from an earlier session (another terminal, or the
-# old `npm run dev:analyzer`) would keep answering with old code. Stop it.
+# AnyChords left running from an earlier start (another Terminal tab, a window
+# that was never closed, or one paused with Ctrl+Z) holds the ports and would
+# keep serving old code. Stop our own leftovers; leave other programs alone.
 if pkill -f "uvicorn server.app:app" 2>/dev/null; then
   echo "Stopped an AnyChords analyser that was still running from before."
   sleep 1
 fi
-for port in 8000 5173; do
-  if command -v lsof >/dev/null && lsof -ti "tcp:$port" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "Port $port is still in use (an old AnyChords window or terminal?)."
-    echo "Close it, or run:  lsof -ti tcp:$port | xargs kill   then npm start again."
-    exit 1
-  fi
-done
+here=$(pwd -P)
+holders() { lsof -ti "tcp:$1" -sTCP:LISTEN 2>/dev/null || true; }
+folder_of() { lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1 || true; }
+if command -v lsof >/dev/null; then
+  for port in 8000 5173; do
+    ours=""
+    for pid in $(holders "$port"); do
+      if [ "$(folder_of "$pid")" = "$here" ]; then
+        kill -TERM "$pid" 2>/dev/null || true
+        kill -CONT "$pid" 2>/dev/null || true # a paused one must wake up to exit
+        ours="$ours $pid "
+      fi
+    done
+    if [ -n "$ours" ]; then
+      for _ in $(seq 1 15); do
+        [ -z "$(holders "$port")" ] && break
+        sleep 0.2
+      done
+      for pid in $(holders "$port"); do
+        case "$ours" in *" $pid "*) kill -KILL "$pid" 2>/dev/null || true ;; esac
+      done
+      sleep 0.2
+      echo "Stopped AnyChords that was still running from before (port $port)."
+    fi
+    pid=$(holders "$port" | head -n 1)
+    if [ -n "$pid" ]; then
+      name=$(ps -o comm= -p "$pid" 2>/dev/null || true)
+      name=${name##*/}
+      where=$(folder_of "$pid")
+      echo "Port $port is in use by another program: ${name:-unknown} (pid $pid, in ${where:-an unknown folder})."
+      echo "AnyChords needs this port. Quit that program, then run npm start again."
+      exit 1
+    fi
+  done
+fi
 
 # YouTube changes often, and yt-dlp (the downloader) keeps up with frequent
 # releases. Once a day, install a newer one if there is one. If that fails
