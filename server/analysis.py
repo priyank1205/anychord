@@ -939,6 +939,11 @@ def analyze_features(features: Features, params: Params | None = None, trace: di
         ],
         "tempo": int(round(tempo)),
         "meter": f"{beats_per_bar or 4}/4",
+        # The beat grid, for laying chords out in bars: beat start times,
+        # beats per bar, and which beat (index into `beats`) is the first downbeat.
+        "beats": [round(float(t), 3) for t in features.boundaries[: count + 1 : features.subdivisions]],
+        "beats_per_bar": int(beats_per_bar or 4),
+        "first_downbeat": int(phase % (beats_per_bar or 4)),
         "confidence": round(confidence, 3),
         "timing": timing,
         "progression": find_core_progression(main_chords, label(tonic * _Q + (mode == MINOR), tonic_beat))

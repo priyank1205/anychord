@@ -38,6 +38,10 @@ def test_result_shape(minor_song):
     assert result["meter"] == "4/4"
     assert abs(result["tempo"] - song.tempo) < 3
     assert result["key_changes"] == []
+    beats = result["beats"]
+    assert result["beats_per_bar"] == 4 and 0 <= result["first_downbeat"] < 4
+    assert all(b > a for a, b in zip(beats, beats[1:]))
+    assert abs(np.median(np.diff(beats)) - 60 / song.tempo) < 0.03
     assert "#" not in "".join(event["chord"] for event in timing)  # F minor is spelled with flats (Db, not C#)
 
 

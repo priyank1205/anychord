@@ -1,96 +1,57 @@
-import * as Tone from 'tone';
-import { Chord } from '@tonaljs/tonal';
+import * as Tone from "tone";
+import { Chord } from "@tonaljs/tonal";
 
-let pianoSynth = null;
-let ukuleleSynth = null;
-let isInitialized = false;
+// "Hear it" previews: a plucked strum for guitar and ukulele, a soft block
+// chord for piano. Built lazily, because browsers only allow audio after a tap.
+let synths = null;
 
-const initAudio = async () => {
-  if (isInitialized) return;
-  
+async function setup() {
+  if (synths) return synths;
   await Tone.start();
+  const reverb = new Tone.Reverb({ decay: 2.2, preDelay: 0.04, wet: 0.25 }).toDestination();
+  const pluck = (decay) =>
+    new Tone.PolySynth(Tone.Synth, {
+      oscillator: { type: "triangle" },
+      envelope: { attack: 0.004, decay, sustain: 0.04, release: 0.9 },
+    }).connect(reverb);
+  const piano = new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: "triangle8" },
+    envelope: { attack: 0.02, decay: 1.4, sustain: 0.35, release: 1.6 },
+  }).connect(reverb);
+  synths = { guitar: pluck(1.1), ukulele: pluck(0.6), piano };
+  return synths;
+}
 
-  // Piano synth: richer, more sustain, warmer
-  pianoSynth = new Tone.PolySynth(Tone.Synth, {
-    oscillator: {
-      type: "triangle8"
-    },
-    envelope: {
-      attack: 0.02,
-      decay: 1.5,
-      sustain: 0.5,
-      release: 2,
-    }
-  }).toDestination();
+// Spread the notes upward from a starting octave, each above the last.
+function voice(notes, octave) {
+  let last = -Infinity;
+  return notes.map((note) => {
+    let midi = Tone.Frequency(`${note}${octave}`).toMidi();
+    while (midi <= last) midi += 12;
+    last = midi;
+    return Tone.Frequency(midi, "midi").toNote();
+  });
+}
 
-  // Ukulele synth: plucky, fast attack, quick decay
-  ukuleleSynth = new Tone.PolySynth(Tone.Synth, {
-    oscillator: {
-      type: "sine"
-    },
-    envelope: {
-      attack: 0.005,
-      decay: 0.5,
-      sustain: 0.05,
-      release: 0.8,
-    }
-  }).toDestination();
+export async function playChordSound(chordName, instrument = "guitar") {
+  if (!chordName || chordName === "N.C.") return;
+  const { guitar, ukulele, piano } = await setup();
+  const [symbol, bass] = chordName.split("/").map((part) => part.trim());
+  const chord = Chord.get(symbol);
+  const notes = chord.empty ? [] : chord.notes;
+  if (!notes.length) return;
+  const now = Tone.now();
 
-  // Add effects
-  const chorus = new Tone.Chorus(4, 2.5, 0.5).start();
-  const reverb = new Tone.Reverb({ decay: 2.5, preDelay: 0.1 });
-  pianoSynth.chain(chorus, reverb, Tone.Destination);
-  ukuleleSynth.chain(reverb, Tone.Destination);
-  
-  isInitialized = true;
-};
-
-export const playChordSound = async (chordName, instrument = 'Piano') => {
-  if (!chordName || chordName === 'N.C.') return;
-
-  if (!isInitialized) {
-    await initAudio();
+  if (instrument === "piano") {
+    const voiced = voice(notes, 4);
+    if (bass) voiced.unshift(`${bass}2`);
+    else voiced.unshift(`${notes[0]}3`);
+    piano.triggerAttackRelease(voiced, "2n", now, 0.35);
+    return;
   }
 
-  // "D/F#": play D with F# as the lowest note (piano only; a ukulele has no low bass).
-  const [baseChord, bassNote] = chordName.split('/').map((part) => part.trim());
-
-  const chord = Chord.get(baseChord);
-  if (!chord.empty && chord.notes.length > 0) {
-    const isUke = instrument === 'Ukulele';
-    const synthToUse = isUke ? ukuleleSynth : pianoSynth;
-
-    const notesToPlay = chord.notes.map((note, index) => {
-      let octave = 4;
-      if (isUke) {
-        // Ukulele voicing (close harmony, higher pitch)
-        octave = 4 + Math.floor(index / 4); 
-      } else {
-        // Piano voicing
-        octave = index === 0 ? 3 : 4;
-      }
-      return `${note}${octave}`;
-    });
-
-    if (!isUke && notesToPlay[0].endsWith('3')) {
-       notesToPlay.push(`${chord.notes[0]}4`);
-    }
-    if (!isUke && bassNote) {
-      notesToPlay.unshift(`${bassNote}2`);
-    }
-
-    const duration = isUke ? "4n" : "2n";
-    const velocity = isUke ? 0.6 : 0.4;
-    
-    if (isUke) {
-      // Arpeggiate slightly to simulate a strum on the ukulele
-      const now = Tone.now();
-      notesToPlay.forEach((note, i) => {
-        synthToUse.triggerAttackRelease(note, duration, now + i * 0.02, velocity);
-      });
-    } else {
-      // Play block chord for piano
-      synthToUse.triggerAttackRelease(notesToPlay, duration, Tone.now(), velocity);
-    }
-  }
-};
+  const isUke = instrument === "ukulele";
+  const synth = isUke ? ukulele : guitar;
+  const voiced = isUke ? voice(notes, 4) : [`${bass || notes[0]}2`, ...voice([notes[0], ...notes.slice(1), notes[0]], 3)];
+  voiced.forEach((note, index) => synth.triggerAttackRelease(note, isUke ? "4n" : "2n", now + index * (isUke ? 0.022 : 0.03), 0.5));
+}

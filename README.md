@@ -4,7 +4,7 @@ An AI-powered web application that automatically generates playable, timeline-sy
 
 ## About
 
-AnyChords bridges the gap between listening and playing. Simply paste a YouTube video link, and the local Python/FastAPI backend will extract the audio and use `librosa` to analyze the track. It automatically detects the tempo and meter, finds the key (including mid-song key changes), and generates a precise, beat-level chord timeline. The React frontend presents a beautiful, continuous chord flow that highlights perfectly in sync with the video playback. 
+AnyChords bridges the gap between listening and playing. Simply paste a YouTube video link, and the local Python/FastAPI backend will extract the audio and use `librosa` to analyze the track. It automatically detects the tempo and meter, finds the key (including mid-song key changes), and generates a precise, beat-level chord timeline. The React frontend lays the chords out as a lead sheet (bars and beats) that lights up in sync with the video.
 
 ## Key Features
 
@@ -12,10 +12,13 @@ AnyChords bridges the gap between listening and playing. Simply paste a YouTube 
 - 🎷 **Every Chord Type the Song Uses:** major, minor, 7ths (maj7, m7, dominant 7, m7b5, dim7, mMaj7), sus2/sus4/7sus4, add9, 6ths, 9/11/13, dim, aug, power chords and slash chords (D/F#). Toggle **Full** / **Simple** to show every chord or just the triad to strum, and **Steady** / **Quick changes** when a song flips chords faster than the chart shows.
 - 🎼 **Key Detection:** The key comes from where the music rests (tonic, cadences, final chord), not just which notes appear. Key changes are reported, and chords are spelled for their key (Bb, not A#).
 - 🎯 **Honest Confidence:** Every chord carries a confidence score. Shaky calls are underlined in the chart, and edit mode offers the analyser's second guess as a one-click fix.
-- ⏱️ **Beat-Level Sync:** A continuous, flowing chord timeline that highlights the active chord exactly as the song plays.
+- ⏱️ **A Chart That Follows the Music:** Chords sit in real bars, sized by how many beats they last, so a two-beat Gm–Bb flip looks different from a whole bar of Gm. The playing chord, beat and bar light up as the video plays; tap any chord to jump there.
+- 🎧 **Practice Tools:** Now / Next with finger shapes and a beat countdown to the next change, 0.5× and 0.75× speed, loop a line, and a capo suggestion for easier open shapes. Diagrams for guitar, ukulele and piano.
+- ⌨️ **Keyboard Shortcuts:** `Space` play/pause, `←` `→` previous/next chord, `L` loop, `S` simple chords, `E` edit, `−` `+` transpose.
 - 🔁 **Pattern Recognition:** Automatically detects and extracts the core repeating chord progression (e.g. `Em ➔ C ➔ G ➔ D`).
-- 🎹 **Transposition & Instruments:** Instantly transpose the entire chart up or down by semitones, and switch instrument contexts.
-- ✏️ **Edit Mode:** Easily correct or fine-tune any chords in the auto-generated draft.
+- 🎹 **Transposition & Capo:** Transpose the whole chart by semitones, or set a capo and see the shapes to play.
+- ✏️ **Edit Mode:** Fix any chord by hand, with the analyser's second guess one tap away. Copy the chart as text, bar by bar.
+- 🌗 **Light and Dark:** Follows your system setting. Works on phones, with a mini player that stays on screen while you scroll the chart.
 
 ## Run It Locally (macOS or Linux)
 
@@ -26,9 +29,9 @@ npm run setup   # once: installs everything (about a minute)
 npm start       # every time: starts the analyser and the website, opens your browser
 ```
 
-Paste a YouTube link and click **Make my chart**. Press `Ctrl+C` in the terminal to stop.
+Paste a YouTube link and click **Get chords**. Press `Ctrl+C` in the terminal to stop.
 
-After a `git pull`, restart with `npm start`. It stops any analyser still running from before, and the chart's status card shows which analyser version made the chart. If the code on disk is newer than the running analyser, the page tells you to restart.
+After a `git pull`, restart with `npm start`. It stops any analyser still running from before, and the line under the chart shows which analyser version made it. If the code on disk is newer than the running analyser, the page tells you to restart.
 
 ## Tech Stack
 
@@ -37,7 +40,5 @@ After a `git pull`, restart with `npm start`. It stops any analyser still runnin
 
 ## Roadmap
 
-- **Instrument Enhancements**: Ukulele & Piano chord diagrams, plus an advanced Piano mode showing both left-hand chords and right-hand notes.
-- **Practice Mode**: The ability to play/pause, slow down the playback, and loop sections. 
-- **User Library**: Saving generated chord charts to the user's account and viewing recent history.
-- **Brand & UI**: Ongoing UI cleaning, polishing the aesthetic, and building out the brand identity.
+- **Piano Mode**: Left-hand bass and right-hand voicings, beyond the single chord diagram.
+- **User Library**: Saving generated chord charts and viewing recent history.
