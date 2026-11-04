@@ -8,7 +8,7 @@ const STAGES = [
   ["Naming the chords", 16],
 ];
 
-export default function AnalysisProgress() {
+export default function AnalysisProgress({ signingIn }) {
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const started = Date.now();
@@ -26,6 +26,14 @@ export default function AnalysisProgress() {
           </li>
         ))}
       </ol>
+      {signingIn && (
+        <p className="progress__sign-in">
+          <Icon name="info" size={16} />
+          <span>
+            Using your {signingIn} YouTube sign-in. If your Mac asks for your password, choose <strong>Always Allow</strong>.
+          </span>
+        </p>
+      )}
       <p className="progress__note">{Math.floor(elapsed)} s · usually under a minute. Longer videos take longer.</p>
       <div className="progress__skeleton" aria-hidden="true">
         {Array.from({ length: 12 }, (_, i) => (

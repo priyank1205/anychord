@@ -9,7 +9,8 @@ fail() { printf '\n\033[31m%s\033[0m\n' "$1" >&2; exit 1; }
 
 command -v node >/dev/null || fail "Node.js is missing. Install the LTS version from https://nodejs.org, then run 'npm run setup' again."
 command -v python3 >/dev/null || fail "Python 3 is missing. Install it from https://www.python.org/downloads/, then run 'npm run setup' again."
-python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fail "Python 3.10 or newer is needed (you have $(python3 --version)). Install a newer one from https://www.python.org/downloads/."
+# 3.11: the oldest Python that current yt-dlp (the YouTube downloader) supports.
+python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || fail "Python 3.11 or newer is needed (you have $(python3 --version)). Install a newer one from https://www.python.org/downloads/."
 
 if ! command -v ffmpeg >/dev/null; then
   if command -v brew >/dev/null; then
@@ -29,6 +30,8 @@ step "Creating the analyser's Python environment (.venv)"
 .venv/bin/python -m pip install --quiet -r server/requirements.txt
 
 step "Installing yt-dlp (YouTube audio downloader)"
-.venv/bin/python -m pip install --quiet --upgrade --target server/vendor yt-dlp
+# [default] adds the JavaScript challenge solver YouTube now needs (yt-dlp-ejs).
+.venv/bin/python -m pip install --quiet --upgrade --target server/vendor "yt-dlp[default]"
+touch server/vendor/.checked
 
 printf '\n\033[32mAll set.\033[0m Start AnyChords with:  npm start\n'

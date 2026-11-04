@@ -13,6 +13,7 @@ import { useYouTubePlayer } from "./hooks/useYouTubePlayer";
 import { buildBars, findAt, toRows } from "./lib/chart";
 import { formatTime, keyAt, simplifyChord, suggestCapo, transposeChord, transposeKey } from "./lib/music";
 import { youtubeVideoId } from "./lib/trackInput";
+import { SIGN_IN_BROWSERS } from "./components/ProblemCard";
 
 const API = "http://127.0.0.1:8000";
 const INSTRUMENTS = ["ukulele", "guitar", "piano"];
@@ -43,6 +44,17 @@ function beatsBetween(beats, time, until) {
   return count;
 }
 
+// The analyser answers failures with { code, message, details }; older or
+// unexpected answers are plain text (or FastAPI's validation list).
+function problemError(detail) {
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    return Object.assign(new Error(detail.message || "The chart couldn’t be made."), { code: detail.code, details: detail.details });
+  }
+  const message =
+    typeof detail === "string" ? detail : "The chart couldn’t be made. Restart AnyChords (Ctrl+C, then npm start) and try again.";
+  return Object.assign(new Error(message), { code: "failed" });
+}
+
 function isTyping(target) {
   return target instanceof HTMLElement && (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 }
@@ -50,7 +62,8 @@ function isTyping(target) {
 export default function App() {
   const [link, setLink] = useState("");
   const [phase, setPhase] = useState("idle"); // idle | loading | ready | error
-  const [inputError, setInputError] = useState("");
+  const [problem, setProblem] = useState(null);
+  const [signingIn, setSigningIn] = useState(null);
   const [arrangement, setArrangement] = useState(null);
   const [videoId, setVideoId] = useState(null);
   const [analyzer, setAnalyzer] = useState(null);
@@ -58,6 +71,8 @@ export default function App() {
   const [detail, setDetail] = useStoredState("anychords.detail", "full", ["full", "simple"]);
   const [sheetState, setSheetState] = useStoredState("anychords.sheet", "open", ["open", "closed"]);
   const [sensitivity, setSensitivity] = useState("normal");
+  // The browser whose YouTube sign-in the analyser may use if YouTube blocks a download.
+  const [browser, setBrowser] = useStoredState("anychords.browser", "", ["", ...SIGN_IN_BROWSERS.map(([value]) => value)]);
   const [recharting, setRecharting] = useState(false);
   const [transposition, setTransposition] = useState(0);
   const [capo, setCapo] = useState(0);
@@ -98,31 +113,33 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const requestChart = useCallback(async (url, mode) => {
-    const response = await fetch(`${API}/api/analyze`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ youtube_url: url, sensitivity: mode }),
-    }).catch(() => {
-      throw new Error("Can’t reach the analyser. Start AnyChords with npm start, then try again.");
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.detail || "The chart couldn’t be made.");
-    setAnalyzer({
-      analyzer_version: result.analyzer_version,
-      restart_required: result.restart_required,
-    });
-    return result;
-  }, []);
+  const requestChart = useCallback(
+    async (url, mode, withBrowser = browser) => {
+      const response = await fetch(`${API}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ youtube_url: url, sensitivity: mode, browser: withBrowser || null }),
+      }).catch(() => {
+        throw problemError({ code: "offline", message: "Can’t reach the analyser. In the terminal, run npm start, then try again." });
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw problemError(result.detail);
+      setAnalyzer((current) => ({ ...current, analyzer_version: result.analyzer_version, restart_required: result.restart_required }));
+      return result;
+    },
+    [browser],
+  );
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  async function startChart(withBrowser) {
     const id = youtubeVideoId(link);
     if (!id) {
-      setInputError("That doesn’t look like a YouTube link. Try one like youtube.com/watch?v=…");
+      const message = "That doesn’t look like a YouTube link. Try one like youtube.com/watch?v=…";
+      if (inSong) showToast(message, "warn");
+      else setProblem({ code: "bad_link", message });
       return;
     }
-    setInputError("");
+    setProblem(null);
+    setSigningIn(withBrowser ?? null);
     setVideoId(id);
     setArrangement(null);
     setPhase("loading");
@@ -132,12 +149,24 @@ export default function App() {
     setLoopRow(null);
     setPosition({ event: -1, bar: -1, beat: -1, toNext: null });
     try {
-      setArrangement(await requestChart(link, sensitivity));
+      setArrangement(await requestChart(link, sensitivity, withBrowser ?? browser));
       setPhase("ready");
     } catch (error) {
-      setInputError(error.message);
+      setProblem({ code: error.code, message: error.message, details: error.details });
       setPhase("error");
+    } finally {
+      setSigningIn(null);
     }
+  }
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    startChart();
+  }
+
+  function chooseBrowser(value) {
+    setBrowser(value);
+    startChart(value);
   }
 
   async function changeSensitivity(mode) {
@@ -396,7 +425,19 @@ export default function App() {
         )}
       </header>
 
-      {!inSong && <Landing link={link} onLink={setLink} onSubmit={handleSubmit} inputError={inputError} analyzer={analyzer} />}
+      {!inSong && (
+        <Landing
+          link={link}
+          onLink={setLink}
+          onSubmit={handleSubmit}
+          problem={problem}
+          analyzer={analyzer}
+          browser={browser}
+          onUseBrowser={chooseBrowser}
+          onForgetBrowser={() => setBrowser("")}
+          onRetry={() => startChart()}
+        />
+      )}
 
       {inSong && (
         <main className="song">
@@ -552,7 +593,7 @@ export default function App() {
             )}
 
             {phase === "loading" ? (
-              <AnalysisProgress />
+              <AnalysisProgress signingIn={SIGN_IN_BROWSERS.find(([value]) => value === signingIn)?.[1]} />
             ) : (
               <ChordGrid
                 rows={rows}

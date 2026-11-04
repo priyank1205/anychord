@@ -524,14 +524,115 @@ kbd {
   font-size: 14px;
 }
 
-.form-error {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 14px;
+/* What went wrong, in plain words, with the one thing to do about it. */
+.problem {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 16px;
+  padding: 16px 18px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--warn-line);
+  background: var(--warn-soft);
+  text-align: left;
+  animation: fade 0.2s ease-out;
+}
+.problem--sign-in {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.problem__icon {
+  margin-top: 1px;
   color: var(--warn);
+}
+.problem--sign-in .problem__icon {
+  color: var(--accent-text);
+}
+.problem__body {
+  flex: 1;
+  min-width: 0;
+}
+.problem h2 {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.problem__body > p {
+  margin-top: 4px;
+  color: var(--text-2);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+.problem__sign-in {
+  margin-top: 14px;
+}
+.problem__ask {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+}
+.problem__browsers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+.problem__browsers .chip {
+  min-height: 34px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.problem__note {
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.problem__note strong {
+  color: var(--text-2);
+}
+.problem__retry {
+  margin-top: 14px;
+}
+.problem__details {
+  margin-top: 14px;
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+.problem__details summary {
+  cursor: pointer;
+  width: fit-content;
+  font-weight: 550;
+}
+.problem__details summary:hover {
+  color: var(--text-2);
+}
+.problem__details pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  max-height: 180px;
+  overflow: auto;
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sign-in-note {
+  margin-top: 14px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+.link-btn {
+  color: var(--accent-text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 /* ---- Landing --------------------------------------------------------------- */
@@ -1670,6 +1771,21 @@ button.seg.is-active:hover {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-ink);
+}
+.progress__sign-in {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+.progress__sign-in .icon {
+  margin-top: 1px;
+  color: var(--accent-text);
 }
 .progress__note {
   margin-top: 14px;

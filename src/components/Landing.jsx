@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import ChordGrid from "./ChordGrid";
 import Icon from "./Icon";
+import ProblemCard, { SIGN_IN_BROWSERS } from "./ProblemCard";
 import { buildBars, findAt, toRows } from "../lib/chart";
 import { DEMO } from "../data/demo";
 
@@ -108,7 +109,8 @@ export function LinkForm({ link, onLink, onSubmit, busy, size = "large", autoFoc
   );
 }
 
-export default function Landing({ link, onLink, onSubmit, inputError, analyzer }) {
+export default function Landing({ link, onLink, onSubmit, problem, analyzer, browser, onUseBrowser, onForgetBrowser, onRetry }) {
+  const browserName = SIGN_IN_BROWSERS.find(([value]) => value === browser)?.[1];
   return (
     <main className="landing">
       <section className="hero">
@@ -120,9 +122,13 @@ export default function Landing({ link, onLink, onSubmit, inputError, analyzer }
           Paste a YouTube link. AnyChords listens to the audio and writes a chord chart that follows the music, beat by beat.
         </p>
         <LinkForm link={link} onLink={onLink} onSubmit={onSubmit} autoFocus />
-        {inputError && (
-          <p className="form-error" role="alert">
-            <Icon name="alert" size={16} /> {inputError}
+        {problem && <ProblemCard problem={problem} browser={browser} onUseBrowser={onUseBrowser} onRetry={onRetry} />}
+        {!problem && browserName && (
+          <p className="sign-in-note">
+            If YouTube blocks a download, AnyChords uses your {browserName} YouTube sign-in.{" "}
+            <button type="button" className="link-btn" onClick={onForgetBrowser}>
+              Stop
+            </button>
           </p>
         )}
       </section>

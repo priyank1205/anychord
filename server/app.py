@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import os
-import shutil
 import subprocess
-import sys
-import tempfile
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -19,11 +14,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-import librosa
-
+from server import youtube
 from server.analysis import SR, AnalysisError, Features, analyze_audio, analyze_features, extract_features, params_for
 
-VENDOR_DIRECTORY = Path(__file__).parent / "vendor"
 REPOSITORY = Path(__file__).resolve().parent.parent
 
 
@@ -75,6 +68,9 @@ app.add_middleware(
 class AnalyzeRequest(BaseModel):
     youtube_url: str
     sensitivity: Literal["normal", "sensitive"] = "normal"
+    # The browser whose YouTube sign-in AnyChords may use when YouTube blocks
+    # a download (see server/youtube.py). None: never use a sign-in.
+    browser: Literal["chrome", "safari", "firefox", "brave", "edge", "chromium", "opera", "vivaldi"] | None = None
 
 
 # Recently analysed videos: switching "Catch fast changes" on re-charts from these
@@ -83,14 +79,12 @@ _FEATURE_CACHE: OrderedDict[str, tuple[Features, dict]] = OrderedDict()
 _FEATURE_CACHE_SIZE = 4
 
 
-def _features_for(url: str) -> tuple[Features, dict]:
+def _features_for(url: str, browser: str | None = None) -> tuple[Features, dict]:
     key = video_id(url)
     if key in _FEATURE_CACHE:
         _FEATURE_CACHE.move_to_end(key)
         return _FEATURE_CACHE[key]
-    with tempfile.TemporaryDirectory(prefix="anychords-") as directory:
-        wav_path, metadata = download_audio(url, Path(directory))
-        y, _ = librosa.load(str(wav_path), sr=SR, mono=True)
+    y, metadata = youtube.fetch_audio(url, key, browser)
     entry = (extract_features(y, SR), metadata)
     _FEATURE_CACHE[key] = entry
     while len(_FEATURE_CACHE) > _FEATURE_CACHE_SIZE:
@@ -112,49 +106,9 @@ def video_id(url: str) -> str | None:
     return None
 
 
-def run(command: list[str], message: str, environment: dict | None = None) -> str:
-    try:
-        result = subprocess.run(command, capture_output=True, text=True, timeout=360, check=True, env=environment)
-        return result.stdout
-    except subprocess.TimeoutExpired as error:
-        raise HTTPException(504, "The audio download took too long. Try a shorter video.") from error
-    except subprocess.CalledProcessError as error:
-        details = error.stderr.strip().splitlines()[-1] if error.stderr.strip() else "Unknown error"
-        raise HTTPException(422, f"{message}: {details}") from error
-
-
-def ytdlp_environment() -> dict:
-    existing_path = os.environ.get("PYTHONPATH", "")
-    return {**os.environ, "PYTHONPATH": f"{VENDOR_DIRECTORY}{os.pathsep}{existing_path}"}
-
-
-def ytdlp_command(*arguments: str) -> list[str]:
-    return [sys.executable, "-m", "yt_dlp", *arguments]
-
-
-def download_audio(url: str, workdir: Path) -> tuple[Path, dict]:
-    """Download a YouTube video's audio as WAV into `workdir`; returns (path, metadata)."""
-    if not (VENDOR_DIRECTORY / "yt_dlp").exists() or not shutil.which("ffmpeg"):
-        raise HTTPException(500, "The project-local yt-dlp package and ffmpeg must be installed on this computer.")
-    environment = ytdlp_environment()
-    metadata_raw = run(ytdlp_command("--no-playlist", "--skip-download", "--dump-single-json", "--extractor-args", "youtube:player_client=android", url), "Could not read video details", environment)
-    metadata = json.loads(metadata_raw)
-    output_template = str(workdir / "source.%(ext)s")
-    run(ytdlp_command(
-        "--no-playlist", "--no-progress", "-f", "bestaudio/best",
-        "-x", "--audio-format", "wav", "--audio-quality", "5",
-        "--extractor-args", "youtube:player_client=android",
-        "-o", output_template, url,
-    ), "Could not download audio", environment)
-    wav_files = list(workdir.glob("*.wav"))
-    if not wav_files:
-        raise HTTPException(422, "The video audio could not be converted for analysis.")
-    return wav_files[0], metadata
-
-
 @app.get("/api/health")
 def health():
-    return {"status": "ok", **version_info()}
+    return {"status": "ok", **version_info(), **youtube.downloader_info()}
 
 
 def _count_changes(result: dict) -> int:
@@ -169,13 +123,16 @@ def analyze(request: AnalyzeRequest):
         raise HTTPException(400, "Please provide a valid YouTube video URL.")
 
     try:
-        features, metadata = _features_for(request.youtube_url)
+        features, metadata = _features_for(request.youtube_url, request.browser)
         result = analyze_features(features, params_for(request.sensitivity))
         # How many more chord changes "Catch fast changes" would show for this song,
         # so the page can suggest it where it matters (decoding is ~1-2 s).
         hint = 0
         if request.sensitivity == "normal":
             hint = max(0, _count_changes(analyze_features(features, params_for("sensitive"))) - _count_changes(result))
+    except youtube.DownloadFailed as error:
+        detail = {"code": error.code, "message": error.message, "details": error.details, "browser": request.browser}
+        raise HTTPException(error.status, detail) from error
     except AnalysisError as error:
         raise HTTPException(422, str(error)) from error
     return {

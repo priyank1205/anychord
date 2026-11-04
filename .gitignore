@@ -6,3 +6,5 @@ __pycache__/
 *.pyc
 server/vendor/
 .venv/
+# Songs kept on disk so re-analysing never re-downloads (server/youtube.py)
+.cache/

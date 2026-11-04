@@ -33,6 +33,15 @@ Paste a YouTube link and click **Get chords**. Press `Ctrl+C` in the terminal to
 
 After a `git pull`, restart with `npm start`. It stops any analyser still running from before, and the line under the chart shows which analyser version made it. If the code on disk is newer than the running analyser, the page tells you to restart.
 
+## If YouTube Blocks a Download
+
+YouTube sometimes answers automatic downloads with "Sign in to confirm you're not a bot", especially after many downloads from one computer. AnyChords then asks which browser you're signed in to YouTube with (Chrome, Safari, Firefox, Brave or Edge). From then on it uses that browser's YouTube sign-in only when YouTube blocks a download; the sign-in never leaves your computer. Turn it off with **Stop** under the link box.
+
+- **Your Mac may ask for your password** the first time, so AnyChords can read the browser's sign-in. Choose **Always Allow**. Firefox doesn't ask.
+- **Safari** needs Full Disk Access for your terminal app: System Settings → Privacy & Security → Full Disk Access.
+- **Heads-up:** yt-dlp (the downloader inside AnyChords) warns that heavy downloading can get an account flagged. AnyChords fetches one song at a time, and songs you've charted are kept in `.cache/audio` (the last 40), so charting one again never goes back to YouTube.
+- **Stay current:** YouTube changes often, so `npm start` updates yt-dlp once a day when a new version is out. YouTube downloads need Python 3.11 or newer.
+
 ## Tech Stack
 
 - **Frontend:** React, Vite, Vanilla CSS 
