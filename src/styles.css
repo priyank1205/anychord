@@ -728,10 +728,8 @@ kbd {
   top: calc(var(--topbar) + 20px);
   max-height: calc(100dvh - var(--topbar) - 40px);
   overflow-y: auto;
-  scrollbar-width: none;
-}
-.song__side::-webkit-scrollbar {
-  display: none;
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-3) transparent;
 }
 
 .song__main {
@@ -996,19 +994,21 @@ kbd {
   font-weight: 500;
 }
 
-/* ---- Chords in this song ------------------------------------------------------- */
+/* ---- Chords in this song (side panel, under Now / Next) ----------------------- */
 
 .sheet {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 .sheet__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 8px;
+  padding: 0 2px;
 }
 .sheet__head h2 {
   font-size: inherit;
@@ -1017,123 +1017,116 @@ kbd {
 .sheet__toggle {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 32px;
-  padding: 0 6px 0 2px;
+  gap: 7px;
+  height: 28px;
+  margin-left: -4px;
+  padding: 0 6px 0 4px;
   border-radius: 8px;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
 }
 .sheet__toggle:hover {
-  color: var(--accent-text);
+  color: var(--text);
 }
 .sheet__total {
   display: inline-grid;
   place-items: center;
-  min-width: 22px;
-  height: 20px;
+  min-width: 20px;
+  height: 18px;
   padding: 0 6px;
   border-radius: 999px;
   background: var(--surface-2);
   color: var(--text-2);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 .sheet__chevron {
-  color: var(--text-3);
   transition: transform 0.2s var(--ease);
 }
 .sheet__toggle[aria-expanded="false"] .sheet__chevron {
   transform: rotate(-90deg);
 }
+.sheet__hint {
+  color: var(--text-3);
+  font-size: 11.5px;
+}
 .sheet__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .sheet--piano .sheet__grid {
-  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .sheet__card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 10px 8px 12px;
+  align-items: stretch;
+  gap: 4px;
+  width: 100%;
+  padding: 7px 6px 6px 8px;
   border-radius: var(--r-md);
   border: 1px solid var(--line);
-  background: var(--bg-raised);
+  background: var(--surface);
+  text-align: left;
   transition:
     border-color 0.2s,
-    background 0.2s,
-    box-shadow 0.2s;
+    background 0.2s;
+}
+.sheet__card:hover {
+  border-color: var(--line-strong);
+  background: var(--surface-2);
 }
 .sheet__top {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 4px;
-  min-height: 28px;
-  font-size: 19px;
+  min-height: 20px;
+  font-size: 16px;
+}
+.sheet__card--long .sheet__top {
+  font-size: 13px;
 }
 .sheet__top .chord-name {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-.sheet__card--long .sheet__top {
-  font-size: 15.5px;
-}
-.sheet__top .hear-btn {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  color: var(--text-3);
-}
-.sheet__top .hear-btn:hover {
-  color: var(--accent-text);
-}
-.sheet__card .diagram {
-  margin-top: 2px;
-}
-.sheet__card .diagram--missing {
-  min-height: 96px;
-  font-size: 11.5px;
 }
 .sheet__count {
-  align-self: flex-end;
+  flex: none;
   color: var(--text-3);
-  font-size: 11.5px;
-  font-weight: 550;
+  font-size: 10.5px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-/* Shapes stay neutral; only the chord playing now turns amber. */
-.sheet__card .diagram__dot,
-.sheet__card .piano__key--on {
-  fill: var(--next-dot);
+.sheet__card .diagram--missing {
+  min-height: 70px;
+  padding: 4px;
+  font-size: 10px;
 }
+/* Small boxes: dots only, like a songbook. The Now card keeps finger numbers. */
 .sheet__card .diagram__finger {
-  fill: var(--bg);
+  display: none;
+}
+/* Shapes stay neutral; only the chord playing now turns amber. */
+.sheet__card .diagram__dot {
+  fill: var(--next-dot);
 }
 .sheet__card .piano__key--on {
   fill: var(--next-key);
 }
 .sheet__card.is-active {
   border-color: var(--accent-line);
-  background: linear-gradient(180deg, var(--accent-soft), transparent 75%), var(--bg-raised);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  background: linear-gradient(180deg, var(--accent-soft), transparent 80%), var(--surface);
 }
 .sheet__card.is-active .diagram__dot,
 .sheet__card.is-active .piano__key--on {
   fill: var(--accent);
-}
-.sheet__card.is-active .diagram__finger {
-  fill: var(--accent-ink);
 }
 .sheet__card.is-active .sheet__top .chord-name {
   color: var(--accent-text);
@@ -1890,6 +1883,48 @@ button.seg.is-active:hover {
 
 /* ---- Responsive --------------------------------------------------------------- */
 
+/* Shorter laptop screens: tighten the side panel so a typical song's chord
+   boxes fit under Now / Next without scrolling. */
+@media (min-width: 901px) and (max-height: 860px) {
+  .song {
+    padding-top: 16px;
+  }
+  .song__side {
+    top: calc(var(--topbar) + 12px);
+    max-height: calc(100dvh - var(--topbar) - 24px);
+  }
+  .player {
+    gap: 10px;
+    padding: 10px;
+  }
+  .play-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .nownext__now,
+  .nownext__next {
+    padding: 10px 12px 12px;
+  }
+  .nownext__chord {
+    margin: 2px 0 8px;
+    font-size: 32px;
+  }
+  .nownext__chord--next {
+    margin-top: 6px;
+    font-size: 24px;
+  }
+  .nownext__now .diagram:not(.diagram--piano) {
+    width: 88px;
+  }
+  .nownext__next .diagram:not(.diagram--piano) {
+    width: 76px;
+  }
+  .sheet {
+    padding-top: 8px;
+    gap: 6px;
+  }
+}
+
 @media (max-width: 1180px) {
   .song {
     grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
@@ -1918,7 +1953,7 @@ button.seg.is-active:hover {
   .player {
     display: grid;
     grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-    grid-template-areas: "video nownext" "transport nownext";
+    grid-template-areas: "video nownext" "transport nownext" "sheet sheet";
     align-items: start;
   }
   .player__video {
@@ -1933,6 +1968,13 @@ button.seg.is-active:hover {
   }
   .shapes .nownext {
     flex: 1;
+  }
+  .sheet {
+    grid-area: sheet;
+  }
+  .sheet__grid,
+  .sheet--piano .sheet__grid {
+    grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
   }
 
   .minibar {
@@ -2074,10 +2116,10 @@ button.seg.is-active:hover {
     flex: 1;
   }
   .sheet__grid {
-    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
   .sheet--piano .sheet__grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .grid__row {

@@ -360,9 +360,9 @@ export default function App() {
         .filter((chord, i, all) => i === 0 || chord !== all[i - 1])
     : [];
 
-  // The mini player takes over once the main player scrolls out of view.
+  // The mini player takes over once Now / Next scrolls out of view.
   useEffect(() => {
-    const node = document.querySelector(".player");
+    const node = document.querySelector(".shapes");
     if (!inSong || !node || typeof IntersectionObserver === "undefined") return undefined;
     const observer = new IntersectionObserver(([entry]) => setPlayerVisible(entry.intersectionRatio > 0.25), { threshold: [0, 0.25, 0.5] });
     observer.observe(node);
@@ -417,7 +417,18 @@ export default function App() {
               onNext={() => stepChord(1)}
               onToggleLoop={toggleLoop}
               onHear={hear}
-            />
+            >
+              {phase === "ready" && songChords.length > 0 && (
+                <ChordSheet
+                  chords={songChords}
+                  active={started && now ? display(now.chord, now.start) : null}
+                  instrument={instrument}
+                  open={sheetState === "open"}
+                  onToggle={() => setSheetState(sheetState === "open" ? "closed" : "open")}
+                  onHear={hear}
+                />
+              )}
+            </PlayerPanel>
           </aside>
 
           <section className="song__main" aria-label="Chord chart">
@@ -532,18 +543,6 @@ export default function App() {
                   ))}
                 </ol>
               </div>
-            )}
-
-            {phase === "ready" && songChords.length > 0 && (
-              <ChordSheet
-                chords={songChords}
-                active={started && now ? display(now.chord, now.start) : null}
-                instrument={instrument}
-                onInstrument={setInstrument}
-                open={sheetState === "open"}
-                onToggle={() => setSheetState(sheetState === "open" ? "closed" : "open")}
-                onHear={hear}
-              />
             )}
 
             {editMode && (

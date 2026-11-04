@@ -44,9 +44,9 @@ function FretDiagram({ chord, instrument, size }) {
 
   if (!shape) {
     return (
-      <div className="diagram diagram--missing" style={{ width: size }}>
+      <span className="diagram diagram--missing" style={{ width: size }}>
         <span>No {instrument} shape for this one yet</span>
-      </div>
+      </span>
     );
   }
   const base = shape.baseFret || 1;
@@ -118,9 +118,9 @@ function PianoDiagram({ chord, size }) {
   const pcs = chordPitchClasses(chord);
   if (!pcs) {
     return (
-      <div className="diagram diagram--missing" style={{ width: size }}>
+      <span className="diagram diagram--missing" style={{ width: size }}>
         <span>No piano voicing for this one yet</span>
-      </div>
+      </span>
     );
   }
   // Voice the chord upwards from its root, starting in the lowest octave
@@ -185,9 +185,9 @@ function PianoDiagram({ chord, size }) {
 export default function ChordDiagram({ chord, instrument, size = 120 }) {
   if (!chord || chord === "N.C.") {
     return (
-      <div className="diagram diagram--missing" style={{ width: size }}>
+      <span className="diagram diagram--missing" style={{ width: size }}>
         <span>No chord</span>
-      </div>
+      </span>
     );
   }
   return instrument === "piano" ? (

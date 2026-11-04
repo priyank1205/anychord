@@ -35,6 +35,7 @@ export default function PlayerPanel({
   onNext,
   onToggleLoop,
   onHear,
+  children,
 }) {
   const nowChord = now ? display(now.chord) : null;
   const nextChord = next ? display(next.chord) : null;
@@ -154,6 +155,7 @@ export default function PlayerPanel({
           </div>
         )}
       </div>
+      {children}
     </section>
   );
 }
