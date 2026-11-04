@@ -8,8 +8,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
@@ -17,7 +19,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from server.analysis import SR, AnalysisError, analyze_audio, analyze_file
+import librosa
+
+from server.analysis import SR, AnalysisError, Features, analyze_audio, analyze_features, extract_features, params_for
 
 VENDOR_DIRECTORY = Path(__file__).parent / "vendor"
 
@@ -46,6 +50,28 @@ app.add_middleware(
 
 class AnalyzeRequest(BaseModel):
     youtube_url: str
+    sensitivity: Literal["normal", "sensitive"] = "normal"
+
+
+# Recently analysed videos: switching "quick changes" on re-charts from these
+# features in a second or two instead of downloading the audio again.
+_FEATURE_CACHE: OrderedDict[str, tuple[Features, dict]] = OrderedDict()
+_FEATURE_CACHE_SIZE = 4
+
+
+def _features_for(url: str) -> tuple[Features, dict]:
+    key = video_id(url)
+    if key in _FEATURE_CACHE:
+        _FEATURE_CACHE.move_to_end(key)
+        return _FEATURE_CACHE[key]
+    with tempfile.TemporaryDirectory(prefix="anychords-") as directory:
+        wav_path, metadata = download_audio(url, Path(directory))
+        y, _ = librosa.load(str(wav_path), sr=SR, mono=True)
+    entry = (extract_features(y, SR), metadata)
+    _FEATURE_CACHE[key] = entry
+    while len(_FEATURE_CACHE) > _FEATURE_CACHE_SIZE:
+        _FEATURE_CACHE.popitem(last=False)
+    return entry
 
 
 def video_id(url: str) -> str | None:
@@ -108,14 +134,14 @@ def analyze(request: AnalyzeRequest):
     if not video_id(request.youtube_url):
         raise HTTPException(400, "Please provide a valid YouTube video URL.")
 
-    with tempfile.TemporaryDirectory(prefix="anychords-") as directory:
-        wav_path, metadata = download_audio(request.youtube_url, Path(directory))
-        try:
-            result = analyze_file(str(wav_path))
-        except AnalysisError as error:
-            raise HTTPException(422, str(error)) from error
-        return {
-            "title": metadata.get("title") or "YouTube video",
-            "artist": metadata.get("uploader") or metadata.get("channel") or "YouTube",
-            **result,
-        }
+    try:
+        features, metadata = _features_for(request.youtube_url)
+        result = analyze_features(features, params_for(request.sensitivity))
+    except AnalysisError as error:
+        raise HTTPException(422, str(error)) from error
+    return {
+        "title": metadata.get("title") or "YouTube video",
+        "artist": metadata.get("uploader") or metadata.get("channel") or "YouTube",
+        "sensitivity": request.sensitivity,
+        **result,
+    }

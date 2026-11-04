@@ -353,11 +353,10 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
             if offset % beats_per_bar == 0:
                 note = bass_base
             elif offset % beats_per_bar == 2 and beats_per_bar == 4:
-                if extended:
-                    fifth = next((i for i in intervals if i in (6, 7, 8)), 0)
-                    note = 36 + ((root + fifth - 36) % 12) if rng.random() < 0.5 else bass_base
-                else:
-                    note = bass_base + 7 if rng.random() < 0.5 else bass_base
+                # The chord's own fifth (the original benchmark added a fifth
+                # above an inverted bass: B under C/E, a note not in the chord).
+                fifth = next((i for i in intervals if i in (6, 7, 8)), 0)
+                note = 36 + ((root + fifth - 36) % 12) if rng.random() < 0.5 else bass_base
             elif offset == length - 1 and rng.random() < 0.3 and plan_index + 1 < len(plan):
                 next_root = plan[plan_index + 1][0]
                 note = 36 + ((next_root - 36) % 12) + (1 if rng.random() < 0.5 else -2)
@@ -402,3 +401,57 @@ def make_song(seed: int, duration_bars: int | None = None, modulate: bool = Fals
         f"{'+'.join(harmony_style)}{', distorted' if distortion else ''}{', modulates' if modulate else ''}{', power chords' if power else ', extended' if extended else ''}{', fast changes' if fast else ''}"
     )
     return Song(mix.astype(np.float32), SR, (tonic, mode), tempo, beats_per_bar, detune, chords, description)
+
+
+def render_progression(
+    chords: list[tuple[str, float]],
+    tempo: float,
+    bass: list[tuple[str, float]],
+    held: list[tuple[str | None, float]] | None = None,
+    seed: int = 0,
+) -> Song:
+    """Render an explicit progression, for regression tests built from real songs.
+
+    chords: (Harte label, beats), e.g. ("Bb:maj/5", 2). bass: (note, beats),
+    a bass line played under them. held: (note or None, beats), a sustained
+    voice on top (a sung or held note that rings across chord changes).
+    """
+    from server.music import NOTE_INDEX, parse_chord
+
+    rng = np.random.default_rng(seed)
+    beat = 60.0 / tempo
+    lead_in = 0.5
+    total = sum(beats for _, beats in chords)
+    length = lead_in + total * beat + 1.5
+    music = np.zeros(int(length * SR))
+    labels: list[tuple[float, float, str]] = [(0.0, lead_in, "N")]
+    time = lead_in
+    for label, beats in chords:
+        root, intervals, _ = parse_chord(label)
+        voicing = _voicing(sorted((root + i) % 12 for i in intervals), rng)
+        for step in range(int(beats * 2)):
+            on_beat = step % 2 == 0
+            if on_beat or rng.random() < 0.4:
+                for string, note in enumerate(voicing):
+                    tone = _tone(_midi_hz(note, 0), 1.2, rng, _partials(rng, 12, 1.2), 3.5, inharmonicity=1e-4)
+                    _add(music, time + step * beat / 2 + string * 0.01, tone, 0.16 if on_beat else 0.09)
+        labels.append((time, time + beats * beat, label))
+        time += beats * beat
+    time = lead_in
+    for note, beats in bass:
+        midi = 36 + ((NOTE_INDEX[note] - 36) % 12)
+        _add(music, time, _tone(_midi_hz(midi, 0), beats * beat * 0.95, rng, _partials(rng, 8, 1.8), 2.0), 0.5)
+        time += beats * beat
+    time = lead_in
+    for note, beats in held or []:
+        if note:
+            midi = 67 + ((NOTE_INDEX[note] - 67) % 12)
+            voice = _tone(_midi_hz(midi, 0), beats * beat, rng, _partials(rng, 6, 0.9), 0, attack=0.05, vibrato_cents=20, sustain=True)
+            _add(music, time, voice, 0.2)
+        time += beats * beat
+    drums = np.zeros_like(music)
+    _drums(drums, lead_in + np.arange(int(total)) * beat, 4, 0.3, rng)
+    mix = music + drums
+    mix /= np.max(np.abs(mix)) + 1e-9
+    labels.append((lead_in + total * beat, length, "N"))
+    return Song(mix.astype(np.float32), SR, (0, "major"), tempo, 4, 0.0, labels, "explicit progression")

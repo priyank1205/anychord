@@ -14,7 +14,10 @@ def test_analyze_endpoint_end_to_end(monkeypatch, tmp_path):
     (tmp_path / "yt_dlp").mkdir()
     monkeypatch.setattr(server_app, "VENDOR_DIRECTORY", tmp_path)
 
+    downloads = []
+
     def fake_run(command, message, environment=None):
+        downloads.append(command)
         if "--dump-single-json" in command:
             return json.dumps({"title": "Test song", "uploader": "Tester"})
         template = command[command.index("-o") + 1]
@@ -30,5 +33,13 @@ def test_analyze_endpoint_end_to_end(monkeypatch, tmp_path):
         assert body["key"] == "B minor"
         assert {"tempo", "meter", "confidence", "timing", "progression", "key_changes", "opening_key"} <= body.keys()
 
+        calls = len(downloads)
+        again = client.post("/api/analyze", json={"youtube_url": "https://youtu.be/dQw4w9WgXcQ", "sensitivity": "sensitive"})
+        assert again.status_code == 200, again.text
+        assert again.json()["sensitivity"] == "sensitive"
+        assert len(downloads) == calls, "switching sensitivity must reuse the analysed audio"
+
         bad = client.post("/api/analyze", json={"youtube_url": "https://example.com/video"})
         assert bad.status_code == 400
+        wrong = client.post("/api/analyze", json={"youtube_url": "https://youtu.be/dQw4w9WgXcQ", "sensitivity": "max"})
+        assert wrong.status_code == 422

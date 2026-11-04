@@ -62,7 +62,7 @@ python3 -m server.benchmark.run --seed 700 --fast       # chords every 1-3 beats
 python3 -m server.benchmark.run --dataset ~/my-annotated-songs
 ```
 
-Synthetic songs (`server/benchmark/synth.py`) come with exact ground truth. They include detuning, drums, a loud melody with passing tones, inversions, sevenths, borrowed chords, distortion, reverb, 3/4 time and key changes. They are still cleaner than real mixes, so treat them as a regression signal and an upper bound.
+Synthetic songs (`server/benchmark/synth.py`) come with exact ground truth. (A bug that walked the bass to a note outside inverted chords, B under C/E, was fixed after the first tables below were measured. On current held-out standard songs, majmin is 97.6%.) They include detuning, drums, a loud melody with passing tones, inversions, sevenths, borrowed chords, distortion, reverb, 3/4 time and key changes. They are still cleaner than real mixes, so treat them as a regression signal and an upper bound.
 
 Held-out synthetic results:
 
@@ -92,6 +92,8 @@ Fast harmonic rhythm (`--fast`: chords every 1–3 beats, line-end turnarounds l
 | Turnarounds reported as one blended chord (Gm + Bb → "Gm7") | 15 of 91 | **3 of 91** |
 
 Three things did it. The chart is now decoded per half-beat, so pushed chords land where they're played. A bass note arriving on a new root makes that change cheaper. And evidence is no longer averaged across neighbouring beats, which had blended Gm | Bb into Gm7.
+
+**Quick changes mode** (the *Steady / Quick changes* toggle, or `"sensitivity": "sensitive"` in the API) trusts a moving bass more, including a bass on the chord's 3rd or 5th (Bb/F), and makes weak-beat changes cheaper. It's built from a real case: Gm | Bb/F | Gm | Bb/F with a G held over the Bb. Steady mode blends that into "Gm7"; across 12 re-created renditions, blended chords drop from 22 to 7. The cost on ordinary songs is a few extra changes (change F-measure −3.6 points on standard songs, −4.4 on rich-chord songs), so it's opt-in, per song. Switching re-charts from the analysed audio without downloading it again.
 
 The known weak spot is a chord that lasts one beat and shares two notes with its neighbour, flipping back and forth (Gm–Bb–Gm–Bb). It now shows as the main chord (Gm) rather than a made-up Gm7, but the flips themselves are usually missed. Even with chord changes made free, the per-beat audio evidence for the in-between chord is too weak; the previous chord is still ringing. A model trained on real recordings is the likely fix.
 

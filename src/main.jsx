@@ -51,6 +51,9 @@ function App() {
   const [transposition, setTransposition] = useState(0);
   const [instrument, setInstrument] = useState("Ukulele");
   const [chordDetail, setChordDetail] = useState(readDetailPreference);
+  // "More" re-charts the same audio with the analyser's quick-changes setting.
+  const [sensitivity, setSensitivity] = useState("normal");
+  const [recharting, setRecharting] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [toast, setToast] = useState("");
   const [analysisError, setAnalysisError] = useState("");
@@ -205,6 +208,17 @@ function App() {
     window.setTimeout(() => setToast(""), 2600);
   }
 
+  async function requestChart(nextSensitivity) {
+    const response = await fetch("http://127.0.0.1:8000/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ youtube_url: videoLink, sensitivity: nextSensitivity }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || "Chord analysis could not be completed.");
+    return result;
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
     if (!videoId) {
@@ -215,18 +229,28 @@ function App() {
     setStatus("loading");
     setAnalysisError("");
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ youtube_url: videoLink }),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.detail || "Chord analysis could not be completed.");
-      setArrangement(result);
+      setArrangement(await requestChart(sensitivity));
       setStatus("ready");
     } catch (error) {
       setAnalysisError(error.message || "Chord analysis could not be completed.");
       setStatus("error");
+    }
+  }
+
+  // Same audio (the analyser keeps it), different setting: a second or two.
+  async function changeSensitivity(nextSensitivity) {
+    if (nextSensitivity === sensitivity || recharting) return;
+    setSensitivity(nextSensitivity);
+    if (!hasGeneratedChart) return;
+    setRecharting(true);
+    try {
+      setArrangement(await requestChart(nextSensitivity));
+      showToast(nextSensitivity === "sensitive" ? "Re-charted to catch quick chord changes" : "Back to the standard chart");
+    } catch (error) {
+      setSensitivity(sensitivity);
+      showToast(error.message || "Could not re-chart this song");
+    } finally {
+      setRecharting(false);
     }
   }
 
@@ -383,6 +407,24 @@ function App() {
                       title={name === "Full" ? "Every chord as heard: 7ths, sus, add9, slash chords…" : "Plain triads for strumming along"}
                     >
                       {name}
+                    </button>
+                  ))}
+                </div>
+                <div className="instrument-switch" role="group" aria-label="Quick chord changes">
+                  {[["normal", "Steady"], ["sensitive", "Quick changes"]].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={sensitivity === value ? "active" : ""}
+                      disabled={recharting}
+                      onClick={() => changeSensitivity(value)}
+                      title={
+                        value === "sensitive"
+                          ? "Catch fast changes like Gm–Bb every two beats, even with the bass on the 5th (Bb/F). May add a few changes that aren't there."
+                          : "Fewer, steadier chord changes. Best for most songs."
+                      }
+                    >
+                      {recharting && sensitivity === value ? "…" : label}
                     </button>
                   ))}
                 </div>

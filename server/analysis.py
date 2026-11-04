@@ -71,6 +71,8 @@ class Params:
     # Emission model
     beta: float = 8.0  # sharpness of chord-template similarity
     bass_weight: float = 5.0  # log-bonus scale for the chord root in the bass
+    inversion_bass_weight: float = 0.0  # bass on any chord tone (root most) supports the chord
+    inversion_share: float = 0.6  # how much a 3rd/5th in the bass counts, vs the root
     bass_onset_bonus: float = 2.0  # cheaper chord change when the bass moves onto the new chord's root
     no_chord_threshold: float = 0.15  # template correlation below this favours N
     silence_level: float = 0.1  # harmonic level (vs the loud parts) below which N takes over
@@ -346,6 +348,17 @@ def emission_logprob(features: Features, params: Params) -> np.ndarray:
     bass_root = features.bass[roots]  # share of bass energy on each chord's root
     logp = np.zeros((N_STATES, correlation.shape[1]))
     logp[:24] = params.beta * correlation + params.bass_weight * bass_root
+    if params.inversion_bass_weight:
+        # The bass on the chord's 3rd or 5th still supports it (Bb/F is a Bb
+        # chord), just less than the root does. Without this, the F under a
+        # Bb/F counted for nothing and Gm | Bb/F | Gm | Bb/F read as one Gm7.
+        bass = features.detail_bass
+        thirds = (roots + np.tile([4, 3], 12)) % 12
+        fifths = (roots + 7) % 12
+        fit = np.maximum(bass[roots], params.inversion_share * np.maximum(bass[thirds], bass[fifths]))
+        support = np.log(fit + 0.1)
+        logp[:24] += params.inversion_bass_weight * support
+        logp[N_STATE] += params.inversion_bass_weight * np.median(support, axis=0)
     silent = np.clip(1.0 - features.loudness / params.silence_level, 0, 1)
     logp[N_STATE] = params.beta * params.no_chord_threshold + params.bass_weight * (1 / 12) + 20.0 * silent
     logp[:24] -= 20.0 * silent
@@ -925,9 +938,24 @@ def analyze_features(features: Features, params: Params | None = None, trace: di
     }
 
 
-def analyze_file(path: str) -> dict:
+# "More quick changes": trust a moving bass more, including a bass on the
+# chord's 3rd or 5th (Bb/F), and make weak-beat changes cheaper. Catches
+# passages like Gm | Bb/F | Gm | Bb/F with a note held over the change
+# (blended into "Gm7" in 22 of 22 test renditions before, 7 after), at the
+# price of a few extra changes on ordinary songs, hence opt-in.
+SENSITIVE = {"inversion_bass_weight": 4.0, "inversion_share": 0.8, "bass_onset_bonus": 3.0, "change_offbeat": 0.35}
+SENSITIVITIES = ("normal", "sensitive")
+
+
+def params_for(sensitivity: str = "normal") -> Params:
+    if sensitivity not in SENSITIVITIES:
+        raise ValueError(f"Unknown sensitivity {sensitivity!r}")
+    return Params(**SENSITIVE) if sensitivity == "sensitive" else Params()
+
+
+def analyze_file(path: str, sensitivity: str = "normal") -> dict:
     y, _ = librosa.load(path, sr=SR, mono=True)
-    return analyze_audio(y, SR)
+    return analyze_audio(y, SR, params_for(sensitivity))
 
 
 def find_core_progression(chords: list[str], tonic_chord: str) -> str:

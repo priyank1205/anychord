@@ -203,3 +203,38 @@ def test_chart_keeps_the_first_pass_chord_changes():
     ]
     kept = [t for t in root_changes if detail[t] >= 0 and detail[t] // analysis._Q == path[t] // 2]
     assert len(kept) >= 0.85 * len(root_changes)
+
+
+def _held_note_turnaround(tempo=94, seed=1):
+    """Re-created from a real recording (inspect output of Andy Shauf's "Satan"):
+    F | C/G | Gm  Bb/F  Gm  Bb/F | F, two beats each in the turnaround, the bass
+    walking G..A F..E, and a G held on top across the Bb."""
+    from server.benchmark.synth import render_progression
+
+    chords, bass, held = [], [], []
+    for _ in range(4):
+        chords += [("F:maj", 4), ("C:maj/5", 4), ("G:min", 2), ("Bb:maj/5", 2), ("G:min", 2), ("Bb:maj/5", 2)]
+        bass += [("F", 4), ("G", 4), ("G", 1.5), ("A", 0.5), ("F", 1.5), ("E", 0.5), ("G", 1.5), ("A", 0.5), ("F", 1.5), ("E", 0.5)]
+        held += [(None, 8), ("G", 8)]
+    chords.append(("F:maj", 4))
+    bass.append(("F", 4))
+    held.append((None, 4))
+    return render_progression(chords, tempo, bass, held, seed=seed)
+
+
+def test_quick_changes_mode_separates_a_held_note_turnaround():
+    from server.analysis import params_for
+
+    song = _held_note_turnaround()
+    result = analyze_audio(song.audio, song.sr, params_for("sensitive"))
+    chords = [event["chord"] for event in result["timing"]]
+    assert not any(chord.startswith("Gm7") for chord in chords), chords
+    assert sum(chord.startswith("Bb") for chord in chords) >= 4, chords
+    assert majmin_scores(song.chords, _segments(result))["majmin"] > 0.85
+
+
+def test_unknown_sensitivity_is_rejected():
+    from server.analysis import params_for
+
+    with pytest.raises(ValueError):
+        params_for("extreme")
